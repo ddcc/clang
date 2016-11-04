@@ -606,7 +606,7 @@ public:
 public:
   AnalyzerOptions() :
     AnalysisStoreOpt(RegionStoreModel),
-    AnalysisConstraintsOpt(RangeConstraintsModel),
+    AnalysisConstraintsOpt(Z3ConstraintsModel),
     AnalysisDiagOpt(PD_HTML),
     AnalysisPurgeOpt(PurgeStmt),
     DisableAllChecks(0),

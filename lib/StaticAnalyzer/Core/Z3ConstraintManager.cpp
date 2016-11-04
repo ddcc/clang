@@ -838,12 +838,20 @@ public:
 
   /// Given a constraint, add it to the solver
   void addConstraint(const Z3Expr &Exp) {
+llvm::errs() << "addConstraint\n";
+Exp.dump();
+llvm::errs() << "\n";
+
     Z3_solver_assert(Z3Context::ZC, Solver, Exp.AST);
   }
 
   /// Given a program state, construct the logical conjunction and add it to
   /// the solver
   void addStateConstraints(ProgramStateRef State) {
+llvm::errs() << "addStateConstraints\n";
+State->dump();
+llvm::errs() << "\n";
+
     // TODO: Don't add all the constraints, only the relevant ones
     ConstraintZ3Ty CZ = State->get<ConstraintZ3>();
     ConstraintZ3Ty::iterator I = CZ.begin(), IE = CZ.end();
@@ -1038,6 +1046,10 @@ Z3_context Z3Context::ZC;
 
 ProgramStateRef Z3ConstraintManager::assumeSym(ProgramStateRef State,
                                                SymbolRef Sym, bool Assumption) {
+llvm::errs() << "== AssumeSym: ";
+Sym->dump();
+llvm::errs() << ", (" << Assumption << ")\n";
+
   QualType RetTy;
   bool hasComparison;
 
@@ -1052,6 +1064,9 @@ ProgramStateRef Z3ConstraintManager::assumeSym(ProgramStateRef State,
 ProgramStateRef Z3ConstraintManager::assumeSymInclusiveRange(
     ProgramStateRef State, SymbolRef Sym, const llvm::APSInt &From,
     const llvm::APSInt &To, bool InRange) {
+llvm::errs() << "== AssumeSymRange: " << From << " >= ";
+Sym->dump();
+llvm::errs() << " <= " << To << ", (" << InRange << ")\n";
   QualType RetTy;
   // The expression may be casted, so we cannot call getZ3DataExpr() directly
   Z3Expr Exp = getZ3Expr(Sym, &RetTy);
@@ -1139,6 +1154,10 @@ bool Z3ConstraintManager::canReasonAboutFloats() const { return true; }
 
 ConditionTruthVal Z3ConstraintManager::checkNull(ProgramStateRef State,
                                                  SymbolRef Sym) {
+llvm::errs() << "==== CheckNull: ";
+Sym->dump();
+llvm::errs() << "\n";
+
   QualType RetTy;
   // The expression may be casted, so we cannot call getZ3DataExpr() directly
   Z3Expr VarExp = getZ3Expr(Sym, &RetTy);
@@ -1172,6 +1191,10 @@ ConditionTruthVal Z3ConstraintManager::checkNull(ProgramStateRef State,
 // templated function, to avoid weird corner cases when casting back and forth
 const llvm::APSInt *Z3ConstraintManager::getSymIntVal(ProgramStateRef State,
                                                       SymbolRef Sym) const {
+llvm::errs() << "==== GetSymIntVal: ";
+Sym->dump();
+llvm::errs() << "\n";
+
   BasicValueFactory &BVF = getBasicVals();
   ASTContext &Ctx = BVF.getContext();
 
@@ -1206,6 +1229,7 @@ const llvm::APSInt *Z3ConstraintManager::getSymIntVal(ProgramStateRef State,
     if (Solver.check() == Z3_L_TRUE)
       return nullptr;
 
+llvm::errs() << "GetSymIntVal = " << Value << "\n";
     // This is the only solution, store it
     return &BVF.getValue(Value);
   } else if (const SymbolCast *SC = dyn_cast<SymbolCast>(Sym)) {
@@ -1279,7 +1303,9 @@ const llvm::APSInt *Z3ConstraintManager::getSymIntVal(ProgramStateRef State,
     QualType LTy = getAPSIntType(*LHS), RTy = getAPSIntType(*RHS);
     doIntTypeConversion<llvm::APSInt, Z3ConstraintManager::castAPSInt>(
         ConvertedLHS, LTy, ConvertedRHS, RTy);
-    return BVF.evalAPSInt(BSE->getOpcode(), ConvertedLHS, ConvertedRHS);
+const llvm::APSInt *Value = BVF.evalAPSInt(BSE->getOpcode(), ConvertedLHS, ConvertedRHS);
+llvm::errs() << "GetSymIntVal = " << *Value << "\n";
+      return Value;
   }
 
   llvm_unreachable("Unsupported expression to get symbol value!");
@@ -1287,6 +1313,11 @@ const llvm::APSInt *Z3ConstraintManager::getSymIntVal(ProgramStateRef State,
 
 const llvm::APFloat *Z3ConstraintManager::getSymFloatVal(ProgramStateRef State,
                                                          SymbolRef Sym) const {
+SmallString<24> Chars;
+llvm::errs() << "==== GetSymFloatVal: ";
+Sym->dump();
+llvm::errs() << "\n";
+
   BasicValueFactory &BVF = getBasicVals();
   ASTContext &Ctx = BVF.getContext();
 
@@ -1317,6 +1348,8 @@ const llvm::APFloat *Z3ConstraintManager::getSymFloatVal(ProgramStateRef State,
     if (Solver.check() == Z3_L_TRUE)
       return nullptr;
 
+Value.toString(Chars);
+llvm::errs() << "GetSymFloatVal = " << Chars << "\n";
     // This is the only solution, store it
     return &BVF.getValue(Value);
   } else if (const SymbolCast *SC = dyn_cast<SymbolCast>(Sym)) {
@@ -1363,7 +1396,10 @@ const llvm::APFloat *Z3ConstraintManager::getSymFloatVal(ProgramStateRef State,
     QualType LTy = getAPFloatType(*LHS), RTy = getAPFloatType(*RHS);
     doFloatTypeConversion<llvm::APFloat, Z3ConstraintManager::castAPFloat>(
         ConvertedLHS, LTy, ConvertedRHS, RTy);
-    return BVF.evalAPFloat(BSE->getOpcode(), ConvertedLHS, ConvertedRHS);
+const llvm::APFloat *Value = BVF.evalAPFloat(BSE->getOpcode(), ConvertedLHS, ConvertedRHS);
+Value->toString(Chars);
+llvm::errs() << "GetSymFloatVal = " << Chars << "\n";
+      return Value;
   } else {
     llvm_unreachable("Unsupported expression to get symbol value!");
   }
@@ -1392,6 +1428,9 @@ Z3ConstraintManager::removeDeadBindings(ProgramStateRef State,
 ProgramStateRef Z3ConstraintManager::assumeZ3Expr(ProgramStateRef State,
                                                   SymbolRef Sym,
                                                   const Z3Expr &Exp) {
+llvm::errs() << "Assume: ";
+Exp.dump();
+llvm::errs() << "\n";
   // Check the model, avoid simplifying AST to save time
   if (checkZ3Model(State, Exp) == Z3_L_TRUE)
     return State->add<ConstraintZ3>(std::make_pair(Sym, Exp));
@@ -1401,6 +1440,8 @@ ProgramStateRef Z3ConstraintManager::assumeZ3Expr(ProgramStateRef State,
 
 Z3_lbool Z3ConstraintManager::checkZ3Model(ProgramStateRef State,
                                            const Z3Expr &Exp) const {
+llvm::errs() << "== checkZ3Model\n";
+
   Solver.reset();
   Solver.addConstraint(Exp);
   Solver.addStateConstraints(State);
@@ -1526,7 +1567,23 @@ Z3Expr Z3ConstraintManager::getZ3BinExpr(const Z3Expr &LHS, QualType LTy,
                                          QualType *RetTy) const {
   Z3Expr NewLHS = LHS;
   Z3Expr NewRHS = RHS;
+llvm::errs() << "LHS: ";
+LHS.dump();
+llvm::errs() << " Type: " << LTy.getAsString() << '\n';
+llvm::errs() << "RHS: ";
+RHS.dump();
+llvm::errs() << " Type: " << RTy.getAsString() << '\n';
+llvm::errs() << "\n";
+if (RetTy) {
+llvm::errs() << "RetType: " << RetTy->getAsString() << '\n';
+}
   doTypeConversion(NewLHS, NewRHS, LTy, RTy);
+llvm::errs() << "NewLHS: ";
+NewLHS.dump();
+llvm::errs() << " Type: " << LTy.getAsString() << '\n';
+llvm::errs() << "NewRHS: ";
+NewRHS.dump();
+llvm::errs() << " Type: " << RTy.getAsString() << '\n';
   // Update the return type parameter if the output type has changed.
   if (RetTy) {
     // A boolean result can be represented as an integer type in C/C++, but at
@@ -1547,6 +1604,9 @@ Z3Expr Z3ConstraintManager::getZ3BinExpr(const Z3Expr &LHS, QualType LTy,
     }
   }
 
+if (RetTy) {
+llvm::errs() << "NewRetType: " << RetTy->getAsString() << '\n';
+}
   return LTy->isRealFloatingType()
              ? Z3Expr::fromFloatBinOp(NewLHS, Op, NewRHS)
              : Z3Expr::fromBinOp(NewLHS, Op, NewRHS,

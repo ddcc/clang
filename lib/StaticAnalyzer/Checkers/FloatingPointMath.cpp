@@ -66,6 +66,7 @@ void FloatingPointMathChecker::handleAssumption(
     CheckerContext &C) const {
   ProgramStateRef StT, StF;
   std::tie(StT, StF) = P;
+llvm::errs() << "== handleAssumption = " << &*StT << " " << &*StF << "\n";
 
   if (StF) {
     reportError(Name, Domain, State, C);

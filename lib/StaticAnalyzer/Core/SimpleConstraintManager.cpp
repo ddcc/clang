@@ -26,6 +26,11 @@ SimpleConstraintManager::~SimpleConstraintManager() {}
 ProgramStateRef SimpleConstraintManager::assume(ProgramStateRef State,
                                                 DefinedSVal Cond,
                                                 bool Assumption) {
+  llvm::errs() << "Cond: ";
+  Cond.dumpToStream(llvm::errs());
+  llvm::errs() << "\nState: ";
+  State->print(llvm::errs());
+
   // If we have a Loc value, cast it to a bool NonLoc first.
   if (Optional<Loc> LV = Cond.getAs<Loc>()) {
     SValBuilder &SVB = State->getStateManager().getSValBuilder();
@@ -39,14 +44,22 @@ ProgramStateRef SimpleConstraintManager::assume(ProgramStateRef State,
     Cond = SVB.evalCast(*LV, SVB.getContext().BoolTy, T).castAs<DefinedSVal>();
   }
 
-  return assume(State, Cond.castAs<NonLoc>(), Assumption);
+  ProgramStateRef NewState = assume(State, Cond.castAs<NonLoc>(), Assumption);
+  llvm::errs() << "\nNewState: ";
+  if (NewState) {
+    NewState->print(llvm::errs());
+  } else {
+    llvm::errs() << "NULL";
+  }
+  llvm::errs() << "\n";
+  return NewState;
 }
 
 ProgramStateRef SimpleConstraintManager::assume(ProgramStateRef State,
                                                 NonLoc Cond, bool Assumption) {
-  State = assumeAux(State, Cond, Assumption);
+  ProgramStateRef NewState = assumeAux(State, Cond, Assumption);
   if (NotifyAssumeClients && SU)
-    return SU->processAssume(State, Cond, Assumption);
+    return SU->processAssume(NewState, Cond, Assumption);
   return State;
 }
 

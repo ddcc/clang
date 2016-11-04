@@ -635,11 +635,17 @@ SVal SimpleSValBuilder::evalBinOpNN(ProgramStateRef state,
       // If so, "fold" the constant by setting 'lhs' to a ConcreteInt
       // and try again.
       SVal simplifiedLhs = simplifySVal(state, lhs);
-      if (simplifiedLhs != lhs)
+      if (simplifiedLhs != lhs) {
+        llvm::errs() << "Simplified: ";
+        simplifiedLhs.dumpToStream(llvm::errs());
+        llvm::errs() << "\nOriginal: ";
+        lhs.dumpToStream(llvm::errs());
+        llvm::errs() << "\n";
         if (auto simplifiedLhsAsNonLoc = simplifiedLhs.getAs<NonLoc>()) {
           lhs = *simplifiedLhsAsNonLoc;
           continue;
         }
+      }
 
       // Is the RHS a constant?
       if (rhs.isFloat()) {
@@ -1209,8 +1215,29 @@ SVal SimpleSValBuilder::simplifySVal(ProgramStateRef State, SVal V) {
     }
 
     SVal VisitSymbolCast(const SymbolCast *S) {
+      llvm::errs() << "SymbolCast: ";
+      S->dumpToStream(llvm::errs());
+      llvm::errs() << "\n";
       SVal V = Visit(S->getOperand());
-      return SVB.evalCast(V, S->getType(), S->getOperand()->getType());
+      llvm::errs() << "V: ";
+      V.dumpToStream(llvm::errs());
+      llvm::errs() << "\n";
+      SVal NewV = SVB.evalCast(V, S->getType(), S->getOperand()->getType());
+      llvm::errs() << "NewV: ";
+      NewV.dumpToStream(llvm::errs());
+      llvm::errs() << "\n (" << (V == NewV) << ")\n";
+
+      Optional<nonloc::SymbolVal> SV = NewV.getAs<nonloc::SymbolVal>();
+      if (V == NewV) {
+        llvm::errs() << "SV: ";
+        SV->dumpToStream(llvm::errs());
+        llvm::errs() << "\n";
+        return nonloc::SymbolVal(S);
+      } else {
+        llvm_unreachable("not symval");
+      }
+
+      return NewV;
     }
 
     SVal VisitSymSymExpr(const SymSymExpr *S) {

@@ -1958,10 +1958,15 @@ void ExprEngine::VisitCommonDeclRefExpr(const Expr *Ex, const NamedDecl *D,
 
     // For references, the 'lvalue' is the pointer address stored in the
     // reference region.
-    if (IsReference) {
-      if (const MemRegion *R = V.getAsRegion())
+    if (!V.isConstant() && IsReference) {
+      if (const MemRegion *R = V.getAsRegion()) {
         V = state->getSVal(R);
-      else
+
+        // References are usually known to be non-zero
+        ProgramStateRef StTrue = state->assume(V.castAs<DefinedSVal>(), true);
+        if (StTrue)
+          state = StTrue;
+      } else
         V = UnknownVal();
     }
 
@@ -2089,9 +2094,17 @@ void ExprEngine::VisitMemberExpr(const MemberExpr *M, ExplodedNode *Pred,
         }
 
         if (field->getType()->isReferenceType()) {
-          if (const MemRegion *R = L.getAsRegion())
+          if (const MemRegion *R = L.getAsRegion()) {
             L = state->getSVal(R);
-          else
+
+            // References are usually known to be non-zero
+            if (!L.isConstant()) {
+              ProgramStateRef StTrue = state->assume(L.castAs<DefinedSVal>(),
+                                                     true);
+              if (StTrue)
+                state = StTrue;
+            }
+          } else
             L = UnknownVal();
         }
 

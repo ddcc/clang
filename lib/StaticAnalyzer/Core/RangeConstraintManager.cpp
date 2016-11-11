@@ -415,17 +415,7 @@ RangeSet RangeConstraintManager::getRange(ProgramStateRef State,
   // given symbol type.
   BasicValueFactory &BV = getBasicVals();
   QualType T = Sym->getType();
-
-  RangeSet Result(F, BV.getMinValue(T), BV.getMaxValue(T));
-
-  // Special case: references are known to be non-zero.
-  if (T->isReferenceType()) {
-    APSIntType IntType = BV.getAPSIntType(T);
-    Result = Result.Intersect(BV, F, ++IntType.getZeroValue(),
-                              --IntType.getZeroValue());
-  }
-
-  return Result;
+  return RangeSet(F, BV.getMinValue(T), BV.getMaxValue(T));
 }
 
 //===------------------------------------------------------------------------===

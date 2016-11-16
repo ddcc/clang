@@ -141,9 +141,13 @@ public:
     return getRawKind() > UnknownValKind;
   }
 
+  bool isFloat() const;
+
   bool isConstant() const;
 
   bool isConstant(int I) const;
+
+  bool isConstant(llvm::APFloat &V) const;
 
   bool isZeroConstant() const;
 
@@ -193,7 +197,7 @@ public:
       return SymExpr::symbol_iterator();
   }
 
-  SymExpr::symbol_iterator symbol_end() const { 
+  SymExpr::symbol_iterator symbol_end() const {
     return SymExpr::symbol_end();
   }
 };
@@ -216,26 +220,26 @@ private:
   // tautologically false.
   bool isUndef() const = delete;
   bool isValid() const = delete;
-  
+
 protected:
   DefinedOrUnknownSVal() {}
   explicit DefinedOrUnknownSVal(const void *d, bool isLoc, unsigned ValKind)
     : SVal(d, isLoc, ValKind) {}
-  
+
   explicit DefinedOrUnknownSVal(BaseKind k, void *D = nullptr)
     : SVal(k, D) {}
-  
+
 private:
   friend class SVal;
   static bool isKind(const SVal& V) {
     return !V.isUndef();
   }
 };
-  
+
 class UnknownVal : public DefinedOrUnknownSVal {
 public:
   explicit UnknownVal() : DefinedOrUnknownSVal(UnknownValKind) {}
-  
+
 private:
   friend class SVal;
   static bool isKind(const SVal &V) {
@@ -305,7 +309,7 @@ public:
   void dumpToStream(raw_ostream &Out) const;
 
   static inline bool isLocType(QualType T) {
-    return T->isAnyPointerType() || T->isBlockPointerType() || 
+    return T->isAnyPointerType() || T->isBlockPointerType() ||
            T->isReferenceType() || T->isNullPtrType();
   }
 
@@ -375,6 +379,34 @@ private:
 
   static bool isKind(const NonLoc& V) {
     return V.getSubKind() == ConcreteIntKind;
+  }
+};
+
+/// \brief Value representing floating-point constant.
+class ConcreteFloat : public NonLoc {
+public:
+  explicit ConcreteFloat(const llvm::APFloat& V) : NonLoc(ConcreteFloatKind, &V) {}
+
+  const llvm::APFloat& getValue() const {
+    return *static_cast<const llvm::APFloat*>(Data);
+  }
+
+  // Transfer functions for binary/unary operations on ConcreteFloats.
+  SVal evalBinOp(SValBuilder &svalBuilder, BinaryOperator::Opcode Op,
+                 const ConcreteFloat& R) const;
+
+  ConcreteFloat evalMinus(SValBuilder &svalBuilder) const;
+
+private:
+  friend class SVal;
+  ConcreteFloat() {}
+  static bool isKind(const SVal& V) {
+    return V.getBaseKind() == NonLocKind &&
+           V.getSubKind() == ConcreteFloatKind;
+  }
+
+  static bool isKind(const NonLoc& V) {
+    return V.getSubKind() == ConcreteFloatKind;
   }
 };
 

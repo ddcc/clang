@@ -72,6 +72,9 @@ BasicValueFactory::~BasicValueFactory() {
   for (APSIntSetTy::iterator I=APSIntSet.begin(), E=APSIntSet.end(); I!=E; ++I)
     I->getValue().~APSInt();
 
+  for (APFloatSetTy::iterator I=APFloatSet.begin(), E=APFloatSet.end(); I!=E; ++I)
+    I->getValue().~APFloat();
+
   delete (PersistentSValsTy*) PersistentSVals;
   delete (PersistentSValPairsTy*) PersistentSValPairs;
 }
@@ -109,6 +112,28 @@ const llvm::APSInt& BasicValueFactory::getValue(uint64_t X, unsigned BitWidth,
 const llvm::APSInt& BasicValueFactory::getValue(uint64_t X, QualType T) {
 
   return getValue(getAPSIntType(T).getValue(X));
+}
+
+const llvm::APFloat &BasicValueFactory::getValue(const llvm::APFloat& X) {
+  llvm::FoldingSetNodeID ID;
+  void *InsertPos;
+  typedef llvm::FoldingSetNodeWrapper<llvm::APFloat> FoldNodeTy;
+
+  X.Profile(ID);
+  FoldNodeTy* P = APFloatSet.FindNodeOrInsertPos(ID, InsertPos);
+
+  if (!P) {
+    P = (FoldNodeTy*) BPAlloc.Allocate<FoldNodeTy>();
+    new (P) FoldNodeTy(X);
+    APFloatSet.InsertNode(P, InsertPos);
+  }
+
+  return *P;
+}
+
+const llvm::APFloat &BasicValueFactory::getValue(int64_t X,
+                                                 const llvm::fltSemantics &S) {
+  return Convert(llvm::APSInt::get(X), S);
 }
 
 const CompoundValData*
@@ -198,7 +223,7 @@ BasicValueFactory::evalAPSInt(BinaryOperator::Opcode Op,
 
   switch (Op) {
     default:
-      assert (false && "Invalid Opcode.");
+      llvm_unreachable("Unrecognized opcode!");
 
     case BO_Mul:
       return &getValue( V1 * V2 );
@@ -286,6 +311,79 @@ BasicValueFactory::evalAPSInt(BinaryOperator::Opcode Op,
   }
 }
 
+const llvm::APFloat*
+BasicValueFactory::evalAPFloat(BinaryOperator::Opcode Op,
+                             const llvm::APFloat& V1, const llvm::APFloat& V2) {
+  llvm::APFloat NewV = V1;
+  llvm::APFloat::opStatus Status = llvm::APFloat::opOK;
+
+  switch (Op) {
+    default:
+      llvm_unreachable("Unrecognized opcode!");
+
+    case BO_Mul:
+      Status = NewV.multiply(V2, llvm::APFloat::rmNearestTiesToEven);
+      if (Status & llvm::APFloat::opOK)
+        return &getValue(NewV);
+      break;
+
+    case BO_Div:
+      Status = NewV.divide(V2, llvm::APFloat::rmNearestTiesToEven);
+      if (Status & llvm::APFloat::opOK)
+        return &getValue(NewV);
+      break;
+
+    case BO_Rem:
+      Status = NewV.remainder(V2);
+      if (Status & llvm::APFloat::opOK)
+        return &getValue(NewV);
+      break;
+
+    case BO_Add:
+      Status = NewV.add(V2, llvm::APFloat::rmNearestTiesToEven);
+      if (Status & llvm::APFloat::opOK)
+        return &getValue(NewV);
+      break;
+
+    case BO_Sub:
+      Status = NewV.subtract(V2, llvm::APFloat::rmNearestTiesToEven);
+      if (Status & llvm::APFloat::opOK)
+        return &getValue(NewV);
+      break;
+  }
+
+  return &getValue(NewV);
+}
+
+const llvm::APSInt*
+BasicValueFactory::evalAPFloatComparison(BinaryOperator::Opcode Op,
+                             const llvm::APFloat& V1, const llvm::APFloat& V2) {
+  llvm::APFloat::cmpResult R = V1.compare(V2);
+  switch (Op) {
+    default:
+      llvm_unreachable("Unrecognized opcode!");
+
+    case BO_LT:
+      return &getTruthValue(R == llvm::APFloat::cmpLessThan);
+
+    case BO_GT:
+      return &getTruthValue(R == llvm::APFloat::cmpGreaterThan);
+
+    case BO_LE:
+      return &getTruthValue(R == llvm::APFloat::cmpLessThan ||
+                            R == llvm::APFloat::cmpEqual);
+
+    case BO_GE:
+      return &getTruthValue(R == llvm::APFloat::cmpGreaterThan ||
+                            R == llvm::APFloat::cmpEqual);
+
+    case BO_EQ:
+      return &getTruthValue(R == llvm::APFloat::cmpEqual);
+
+    case BO_NE:
+      return &getTruthValue(R != llvm::APFloat::cmpEqual);
+  }
+}
 
 const std::pair<SVal, uintptr_t>&
 BasicValueFactory::getPersistentSValWithData(const SVal& V, uintptr_t Data) {

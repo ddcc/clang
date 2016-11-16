@@ -81,8 +81,8 @@ namespace RValues {
   void test(int coin) {
     // Force a cache-out when we try to conjure a temporary region for the operator call.
     // ...then, don't crash.
-    clang_analyzer_eval(+(coin ? getSmallOpaque() : getSmallOpaque())); // expected-warning{{UNKNOWN}}
-    clang_analyzer_eval(+(coin ? getLargeOpaque() : getLargeOpaque())); // expected-warning{{UNKNOWN}}
+    clang_analyzer_eval(+(coin ? getSmallOpaque() : getSmallOpaque())); // expected-warning{{TRUE}}
+    clang_analyzer_eval(+(coin ? getLargeOpaque() : getLargeOpaque())); // expected-warning{{TRUE}}
   }
 }
 

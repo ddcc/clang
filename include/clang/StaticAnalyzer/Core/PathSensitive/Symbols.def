@@ -37,6 +37,8 @@
 ABSTRACT_SYMBOL(BinarySymExpr, SymExpr)
   SYMBOL(IntSymExpr, BinarySymExpr)
   SYMBOL(SymIntExpr, BinarySymExpr)
+  SYMBOL(FloatSymExpr, BinarySymExpr)
+  SYMBOL(SymFloatExpr, BinarySymExpr)
   SYMBOL(SymSymExpr, BinarySymExpr)
 SYMBOL_RANGE(BINARYSYMEXPRS, IntSymExprKind, SymSymExprKind)
 

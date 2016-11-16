@@ -1851,7 +1851,7 @@ void CStringChecker::evalStrcmpCommon(CheckerContext &C, const CallExpr *CE,
       SVal lenVal = state->getSVal(lenExpr, LCtx);
 
       // If the length is known, we can get the right substrings.
-      if (const llvm::APSInt *len = svalBuilder.getKnownValue(state, lenVal)) {
+      if (const llvm::APSInt *len = svalBuilder.getKnownIntValue(state, lenVal)) {
         // Create substrings of each to compare the prefix.
         s1StrRef = s1StrRef.substr(0, (size_t)len->getZExtValue());
         s2StrRef = s2StrRef.substr(0, (size_t)len->getZExtValue());

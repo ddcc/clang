@@ -30,8 +30,12 @@ void testnullptrMacro(int *p) {
 
 // There are no path notes on the comparison to float types.
 void testDoubleMacro(double d) {
+#ifdef ANALYZER_CM_Z3
+  if (d == DBL_MAX) { // expected-note {{Assuming 'd' is equal to DBL_MAX}}
+                      // expected-note@-1 {{Taking true branch}}
+#else
   if (d == DBL_MAX) { // expected-note {{Taking true branch}}
-
+#endif
     char *p = NULL; // expected-note {{'p' initialized to a null pointer value}}
     *p = 7;         // expected-warning {{Dereference of null pointer (loaded from variable 'p')}}
                     // expected-note@-1 {{Dereference of null pointer (loaded from variable 'p')}}

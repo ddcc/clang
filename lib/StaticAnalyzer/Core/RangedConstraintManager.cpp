@@ -39,7 +39,6 @@ ProgramStateRef RangedConstraintManager::assumeSym(ProgramStateRef State,
 
       return assumeSymRel(State, SIE->getLHS(), op, SIE->getRHS());
     }
-
   } else if (const SymSymExpr *SSE = dyn_cast<SymSymExpr>(Sym)) {
     // Translate "a != b" to "(b - a) != 0".
     // We invert the order of the operands as a heuristic for how loop

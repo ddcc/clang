@@ -48,6 +48,29 @@ void IntSymExpr::dumpToStream(raw_ostream &os) const {
   os << ')';
 }
 
+void SymFloatExpr::dumpToStream(raw_ostream &os) const {
+  SmallString<24> Chars;
+  getRHS().toString(Chars, 0, 0);
+
+  os << '(';
+  getLHS()->dumpToStream(os);
+  os << ") "
+     << BinaryOperator::getOpcodeStr(getOpcode()) << ' '
+     << Chars;
+}
+
+void FloatSymExpr::dumpToStream(raw_ostream &os) const {
+  SmallString<24> Chars;
+  getLHS().toString(Chars, 0, 0);
+
+  os << Chars
+     << ' '
+     << BinaryOperator::getOpcodeStr(getOpcode())
+     << " (";
+  getRHS()->dumpToStream(os);
+  os << ')';
+}
+
 void SymSymExpr::dumpToStream(raw_ostream &os) const {
   os << '(';
   getLHS()->dumpToStream(os);
@@ -130,6 +153,12 @@ void SymExpr::symbol_iterator::expand() {
       return;
     case SymExpr::IntSymExprKind:
       itr.push_back(cast<IntSymExpr>(SE)->getRHS());
+      return;
+    case SymExpr::SymFloatExprKind:
+      itr.push_back(cast<SymFloatExpr>(SE)->getLHS());
+      return;
+    case SymExpr::FloatSymExprKind:
+      itr.push_back(cast<FloatSymExpr>(SE)->getRHS());
       return;
     case SymExpr::SymSymExprKind: {
       const SymSymExpr *x = cast<SymSymExpr>(SE);
@@ -288,6 +317,42 @@ const IntSymExpr *SymbolManager::getIntSymExpr(const llvm::APSInt& lhs,
   return cast<IntSymExpr>(data);
 }
 
+const SymFloatExpr *SymbolManager::getSymFloatExpr(const SymExpr *lhs,
+                                                   BinaryOperator::Opcode op,
+                                                   const llvm::APFloat& v,
+                                                   QualType t) {
+  llvm::FoldingSetNodeID ID;
+  SymFloatExpr::Profile(ID, lhs, op, v, t);
+  void *InsertPos;
+  SymExpr *data = DataSet.FindNodeOrInsertPos(ID, InsertPos);
+
+  if (!data) {
+    data = (SymFloatExpr*) BPAlloc.Allocate<SymFloatExpr>();
+    new (data) SymFloatExpr(lhs, op, v, t);
+    DataSet.InsertNode(data, InsertPos);
+  }
+
+  return cast<SymFloatExpr>(data);
+}
+
+const FloatSymExpr *SymbolManager::getFloatSymExpr(const llvm::APFloat& lhs,
+                                                   BinaryOperator::Opcode op,
+                                                   const SymExpr *rhs,
+                                                   QualType t) {
+  llvm::FoldingSetNodeID ID;
+  FloatSymExpr::Profile(ID, lhs, op, rhs, t);
+  void *InsertPos;
+  SymExpr *data = DataSet.FindNodeOrInsertPos(ID, InsertPos);
+
+  if (!data) {
+    data = (FloatSymExpr*) BPAlloc.Allocate<FloatSymExpr>();
+    new (data) FloatSymExpr(lhs, op, rhs, t);
+    DataSet.InsertNode(data, InsertPos);
+  }
+
+  return cast<FloatSymExpr>(data);
+}
+
 const SymSymExpr *SymbolManager::getSymSymExpr(const SymExpr *lhs,
                                                BinaryOperator::Opcode op,
                                                const SymExpr *rhs,
@@ -338,6 +403,9 @@ bool SymbolManager::canSymbolicate(QualType T) {
     return true;
 
   if (T->isIntegralOrEnumerationType())
+    return true;
+
+  if (T->isRealFloatingType())
     return true;
 
   if (T->isRecordType() && !T->isUnionType())
@@ -483,6 +551,12 @@ bool SymbolReaper::isLive(SymbolRef sym) {
     break;
   case SymExpr::IntSymExprKind:
     KnownLive = isLive(cast<IntSymExpr>(sym)->getRHS());
+    break;
+  case SymExpr::SymFloatExprKind:
+    KnownLive = isLive(cast<SymFloatExpr>(sym)->getLHS());
+    break;
+  case SymExpr::FloatSymExprKind:
+    KnownLive = isLive(cast<FloatSymExpr>(sym)->getRHS());
     break;
   case SymExpr::SymSymExprKind:
     KnownLive = isLive(cast<SymSymExpr>(sym)->getLHS()) &&

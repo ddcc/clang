@@ -19,6 +19,7 @@
 #include "clang/AST/DeclCXX.h"
 using namespace clang;
 using namespace ento;
+using llvm::APFloat;
 using llvm::APSInt;
 
 //===----------------------------------------------------------------------===//
@@ -204,8 +205,16 @@ nonloc::PointerToMember::iterator nonloc::PointerToMember::end() const {
 // Useful predicates.
 //===----------------------------------------------------------------------===//
 
+bool SVal::isFloat() const {
+  if (Optional<nonloc::SymbolVal> SV = getAs<nonloc::SymbolVal>()) {
+    return SV->getSymbol()->getType()->isRealFloatingType();
+  }
+  return getAs<nonloc::ConcreteFloat>().hasValue();
+}
+
 bool SVal::isConstant() const {
-  return getAs<nonloc::ConcreteInt>() || getAs<loc::ConcreteInt>();
+  return getAs<nonloc::ConcreteInt>() || getAs<loc::ConcreteInt>() ||
+         getAs<nonloc::ConcreteFloat>();
 }
 
 bool SVal::isConstant(int I) const {
@@ -216,7 +225,15 @@ bool SVal::isConstant(int I) const {
   return false;
 }
 
+bool SVal::isConstant(APFloat &V) const {
+  if (Optional<nonloc::ConcreteFloat> NF = getAs<nonloc::ConcreteFloat>())
+    return NF->getValue().compare(V) == llvm::APFloat::cmpEqual;
+  return false;
+}
+
 bool SVal::isZeroConstant() const {
+  if (Optional<nonloc::ConcreteFloat> NF = getAs<nonloc::ConcreteFloat>())
+    return NF->getValue().isPosZero() || NF->getValue().isNegZero();
   return isConstant(0);
 }
 
@@ -245,6 +262,31 @@ nonloc::ConcreteInt::evalComplement(SValBuilder &svalBuilder) const {
 nonloc::ConcreteInt
 nonloc::ConcreteInt::evalMinus(SValBuilder &svalBuilder) const {
   return svalBuilder.makeIntVal(-getValue());
+}
+
+nonloc::ConcreteFloat
+nonloc::ConcreteFloat::evalMinus(SValBuilder &svalBuilder) const {
+  llvm::APFloat Value = getValue();
+  Value.changeSign();
+  return svalBuilder.makeFloatVal(Value);
+}
+
+SVal nonloc::ConcreteFloat::evalBinOp(SValBuilder &svalBuilder,
+                                      BinaryOperator::Opcode Op,
+                                      const nonloc::ConcreteFloat& R) const {
+  if (BinaryOperator::isComparisonOp(Op)) {
+    const llvm::APSInt *V = svalBuilder.getBasicValueFactory().evalAPFloatComparison(
+        Op, getValue(), R.getValue());
+    if (V)
+      return nonloc::ConcreteInt(*V);
+    return UnknownVal();
+  }
+
+  const llvm::APFloat *V = svalBuilder.getBasicValueFactory().evalAPFloat(
+        Op, getValue(), R.getValue());
+    if (V)
+      return nonloc::ConcreteFloat(*V);
+    return UnknownVal();
 }
 
 //===----------------------------------------------------------------------===//
@@ -298,6 +340,17 @@ void NonLoc::dumpToStream(raw_ostream &os) const {
         os << C.getValue().getSExtValue();
       os << ' ' << (C.getValue().isUnsigned() ? 'U' : 'S')
          << C.getValue().getBitWidth() << 'b';
+      break;
+    }
+    case nonloc::ConcreteFloatKind: {
+      const nonloc::ConcreteFloat& C = castAs<nonloc::ConcreteFloat>();
+      SmallString<24> Chars;
+
+      C.getValue().toString(Chars, 0, 0);
+      os << Chars
+         << ' '
+         << llvm::APFloat::semanticsSizeInBits(C.getValue().getSemantics())
+         << 'b';
       break;
     }
     case nonloc::SymbolValKind: {

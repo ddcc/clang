@@ -152,6 +152,10 @@ def ConversionChecker : Checker<"Conversion">,
   HelpText<"Loss of sign/precision in implicit conversions">,
   DescFile<"ConversionChecker.cpp">;
 
+def FloatingPointMathChecker : Checker<"FPMath">,
+  HelpText<"Check for domain errors in floating-point math functions">,
+  DescFile<"FloatingPointMath.cpp">;
+
 def IdenticalExprChecker : Checker<"IdenticalExpr">,
   HelpText<"Warn about unintended use of identical expressions in operators">,
   DescFile<"IdenticalExprChecker.cpp">;

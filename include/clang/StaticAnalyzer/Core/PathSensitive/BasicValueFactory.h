@@ -18,9 +18,9 @@
 
 #include "clang/AST/ASTContext.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/APSIntType.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/MemRegion.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/SVals.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/StoreRef.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/MemRegion.h"
 
 namespace clang {
 namespace ento {
@@ -38,15 +38,16 @@ public:
   iterator begin() const { return L.begin(); }
   iterator end() const { return L.end(); }
 
-  static void Profile(llvm::FoldingSetNodeID& ID, QualType T,
+  static void Profile(llvm::FoldingSetNodeID &ID, QualType T,
                       llvm::ImmutableList<SVal> L);
 
-  void Profile(llvm::FoldingSetNodeID& ID) { Profile(ID, T, L); }
+  void Profile(llvm::FoldingSetNodeID &ID) { Profile(ID, T, L); }
 };
 
 class LazyCompoundValData : public llvm::FoldingSetNode {
   StoreRef store;
   const TypedValueRegion *region;
+
 public:
   LazyCompoundValData(const StoreRef &st, const TypedValueRegion *r)
       : store(st), region(r) {
@@ -56,70 +57,75 @@ public:
   const void *getStore() const { return store.getStore(); }
   const TypedValueRegion *getRegion() const { return region; }
 
-  static void Profile(llvm::FoldingSetNodeID& ID,
-                      const StoreRef &store,
+  static void Profile(llvm::FoldingSetNodeID &ID, const StoreRef &store,
                       const TypedValueRegion *region);
 
-  void Profile(llvm::FoldingSetNodeID& ID) { Profile(ID, store, region); }
+  void Profile(llvm::FoldingSetNodeID &ID) { Profile(ID, store, region); }
 };
 
-class PointerToMemberData: public llvm::FoldingSetNode {
+class PointerToMemberData : public llvm::FoldingSetNode {
   const DeclaratorDecl *D;
   llvm::ImmutableList<const CXXBaseSpecifier *> L;
 
 public:
   PointerToMemberData(const DeclaratorDecl *D,
                       llvm::ImmutableList<const CXXBaseSpecifier *> L)
-    : D(D), L(L) {}
+      : D(D), L(L) {}
 
   typedef llvm::ImmutableList<const CXXBaseSpecifier *>::iterator iterator;
   iterator begin() const { return L.begin(); }
   iterator end() const { return L.end(); }
 
-  static void Profile(llvm::FoldingSetNodeID& ID, const DeclaratorDecl *D,
+  static void Profile(llvm::FoldingSetNodeID &ID, const DeclaratorDecl *D,
                       llvm::ImmutableList<const CXXBaseSpecifier *> L);
 
-  void Profile(llvm::FoldingSetNodeID& ID) { Profile(ID, D, L); }
-  const DeclaratorDecl *getDeclaratorDecl() const {return D;}
+  void Profile(llvm::FoldingSetNodeID &ID) { Profile(ID, D, L); }
+  const DeclaratorDecl *getDeclaratorDecl() const { return D; }
   llvm::ImmutableList<const CXXBaseSpecifier *> getCXXBaseList() const {
     return L;
   }
 };
 
 class BasicValueFactory {
-  typedef llvm::FoldingSet<llvm::FoldingSetNodeWrapper<llvm::APSInt> >
-          APSIntSetTy;
+  typedef llvm::FoldingSet<llvm::FoldingSetNodeWrapper<llvm::APSInt>>
+      APSIntSetTy;
+  typedef llvm::FoldingSet<llvm::FoldingSetNodeWrapper<llvm::APFloat>>
+      APFloatSetTy;
 
   ASTContext &Ctx;
-  llvm::BumpPtrAllocator& BPAlloc;
+  llvm::BumpPtrAllocator &BPAlloc;
 
-  APSIntSetTy   APSIntSet;
-  void *        PersistentSVals;
-  void *        PersistentSValPairs;
+  APSIntSetTy APSIntSet;
+  APFloatSetTy APFloatSet;
+  void *PersistentSVals;
+  void *PersistentSValPairs;
 
   llvm::ImmutableList<SVal>::Factory SValListFactory;
-  llvm::ImmutableList<const CXXBaseSpecifier*>::Factory CXXBaseListFactory;
-  llvm::FoldingSet<CompoundValData>  CompoundValDataSet;
+  llvm::ImmutableList<const CXXBaseSpecifier *>::Factory CXXBaseListFactory;
+  llvm::FoldingSet<CompoundValData> CompoundValDataSet;
   llvm::FoldingSet<LazyCompoundValData> LazyCompoundValDataSet;
   llvm::FoldingSet<PointerToMemberData> PointerToMemberDataSet;
 
   // This is private because external clients should use the factory
   // method that takes a QualType.
-  const llvm::APSInt& getValue(uint64_t X, unsigned BitWidth, bool isUnsigned);
+  const llvm::APSInt &getValue(uint64_t X, unsigned BitWidth, bool isUnsigned);
 
 public:
   BasicValueFactory(ASTContext &ctx, llvm::BumpPtrAllocator &Alloc)
-    : Ctx(ctx), BPAlloc(Alloc), PersistentSVals(nullptr),
-      PersistentSValPairs(nullptr), SValListFactory(Alloc),
-      CXXBaseListFactory(Alloc) {}
+      : Ctx(ctx), BPAlloc(Alloc), PersistentSVals(nullptr),
+        PersistentSValPairs(nullptr), SValListFactory(Alloc),
+        CXXBaseListFactory(Alloc) {}
 
   ~BasicValueFactory();
 
   ASTContext &getContext() const { return Ctx; }
 
-  const llvm::APSInt& getValue(const llvm::APSInt& X);
-  const llvm::APSInt& getValue(const llvm::APInt& X, bool isUnsigned);
-  const llvm::APSInt& getValue(uint64_t X, QualType T);
+  const llvm::APSInt &getValue(const llvm::APSInt &X);
+  const llvm::APSInt &getValue(const llvm::APInt &X, bool isUnsigned);
+  const llvm::APSInt &getValue(uint64_t X, QualType T);
+
+  const llvm::APFloat &getValue(const llvm::APFloat &X);
+  const llvm::APFloat &getValue(int64_t X, const llvm::fltSemantics &S);
 
   /// Returns the type of the APSInt used to store values of the given QualType.
   APSIntType getAPSIntType(QualType T) const {
@@ -128,64 +134,106 @@ public:
                       !T->isSignedIntegerOrEnumerationType());
   }
 
+  // Returns whether the floating-point conversion completed successfully
+  static bool checkFloatConversion(const llvm::APFloat::opStatus Status) {
+    return !(Status & (llvm::APFloat::opOverflow | llvm::APFloat::opInvalidOp));
+  }
+
   /// Convert - Create a new persistent APSInt with the same value as 'From'
   ///  but with the bitwidth and signedness of 'To'.
-  const llvm::APSInt &Convert(const llvm::APSInt& To,
-                              const llvm::APSInt& From) {
+  const llvm::APSInt &Convert(const llvm::APSInt &To,
+                              const llvm::APSInt &From) {
     APSIntType TargetType(To);
     if (TargetType == APSIntType(From))
       return From;
 
     return getValue(TargetType.convert(From));
   }
-  
+
   const llvm::APSInt &Convert(QualType T, const llvm::APSInt &From) {
     APSIntType TargetType = getAPSIntType(T);
     if (TargetType == APSIntType(From))
       return From;
-    
+
     return getValue(TargetType.convert(From));
   }
 
-  const llvm::APSInt& getIntValue(uint64_t X, bool isUnsigned) {
+  const llvm::APFloat &Convert(const llvm::APSInt &From,
+                               const llvm::fltSemantics &S) {
+    llvm::APFloat To(S, llvm::APFloat::uninitialized);
+    bool result = Convert(To, From);
+    assert(result && "Failed to convert integer to floating-point!");
+    (void)result;
+    return getValue(To);
+  }
+
+  const llvm::APFloat &Convert(QualType T, const llvm::APFloat &From) {
+    bool lossOfPrecision;
+    llvm::APFloat To = From;
+    bool isOk = checkFloatConversion(
+        To.convert(Ctx.getFloatTypeSemantics(T),
+                   llvm::APFloat::rmNearestTiesToEven, &lossOfPrecision));
+    assert(isOk && "Failed to convert integer to floating-point!");
+    (void)isOk;
+    return getValue(To);
+  }
+
+  /// Fills an existing APFloat with the floating-point representation of an
+  /// APSInt. Returns true if the conversion is successful.
+  static bool Convert(llvm::APFloat &Float, const llvm::APSInt &Int) {
+    // Cannot be represented in destination type, this is undefined behavior
+    return checkFloatConversion(Float.convertFromAPInt(
+        Int, Int.isSigned(), llvm::APFloat::rmNearestTiesToEven));
+  }
+
+  /// Fills an existing APSInt with the integer representation of an
+  /// APFloat. Returns true if the conversion is successful.
+  static bool Convert(llvm::APSInt &Int, const llvm::APFloat &Float) {
+    bool isExact;
+    // Cannot be represented in destination type, this is undefined behavior
+    return checkFloatConversion(Float.convertToInteger(
+        Int, llvm::APFloat::rmNearestTiesToEven, &isExact));
+  }
+
+  const llvm::APSInt &getIntValue(uint64_t X, bool isUnsigned) {
     QualType T = isUnsigned ? Ctx.UnsignedIntTy : Ctx.IntTy;
     return getValue(X, T);
   }
 
-  inline const llvm::APSInt& getMaxValue(const llvm::APSInt &v) {
+  inline const llvm::APSInt &getMaxValue(const llvm::APSInt &v) {
     return getValue(APSIntType(v).getMaxValue());
   }
 
-  inline const llvm::APSInt& getMinValue(const llvm::APSInt &v) {
+  inline const llvm::APSInt &getMinValue(const llvm::APSInt &v) {
     return getValue(APSIntType(v).getMinValue());
   }
 
-  inline const llvm::APSInt& getMaxValue(QualType T) {
+  inline const llvm::APSInt &getMaxValue(QualType T) {
     return getValue(getAPSIntType(T).getMaxValue());
   }
 
-  inline const llvm::APSInt& getMinValue(QualType T) {
+  inline const llvm::APSInt &getMinValue(QualType T) {
     return getValue(getAPSIntType(T).getMinValue());
   }
 
-  inline const llvm::APSInt& Add1(const llvm::APSInt& V) {
+  inline const llvm::APSInt &Add1(const llvm::APSInt &V) {
     llvm::APSInt X = V;
     ++X;
     return getValue(X);
   }
 
-  inline const llvm::APSInt& Sub1(const llvm::APSInt& V) {
+  inline const llvm::APSInt &Sub1(const llvm::APSInt &V) {
     llvm::APSInt X = V;
     --X;
     return getValue(X);
   }
 
-  inline const llvm::APSInt& getZeroWithTypeSize(QualType T) {
+  inline const llvm::APSInt &getZeroWithTypeSize(QualType T) {
     assert(T->isScalarType());
     return getValue(0, Ctx.getTypeSize(T), true);
   }
 
-  inline const llvm::APSInt& getZeroWithPtrWidth(bool isUnsigned = true) {
+  inline const llvm::APSInt &getZeroWithPtrWidth(bool isUnsigned = true) {
     return getValue(0, Ctx.getTypeSize(Ctx.VoidPtrTy), isUnsigned);
   }
 
@@ -193,23 +241,23 @@ public:
     return getValue(X, Ctx.getTypeSize(Ctx.VoidPtrTy), isUnsigned);
   }
 
-  inline const llvm::APSInt& getTruthValue(bool b, QualType T) {
+  inline const llvm::APSInt &getTruthValue(bool b, QualType T) {
     return getValue(b ? 1 : 0, Ctx.getTypeSize(T), false);
   }
 
-  inline const llvm::APSInt& getTruthValue(bool b) {
+  inline const llvm::APSInt &getTruthValue(bool b) {
     return getTruthValue(b, Ctx.getLogicalOperationType());
   }
 
   const CompoundValData *getCompoundValData(QualType T,
                                             llvm::ImmutableList<SVal> Vals);
 
-  const LazyCompoundValData *getLazyCompoundValData(const StoreRef &store,
-                                            const TypedValueRegion *region);
+  const LazyCompoundValData *
+  getLazyCompoundValData(const StoreRef &store, const TypedValueRegion *region);
 
-  const PointerToMemberData *getPointerToMemberData(
-      const DeclaratorDecl *DD,
-      llvm::ImmutableList<const CXXBaseSpecifier *> L);
+  const PointerToMemberData *
+  getPointerToMemberData(const DeclaratorDecl *DD,
+                         llvm::ImmutableList<const CXXBaseSpecifier *> L);
 
   llvm::ImmutableList<SVal> getEmptySValList() {
     return SValListFactory.getEmptyList();
@@ -223,31 +271,39 @@ public:
     return CXXBaseListFactory.getEmptyList();
   }
 
-  llvm::ImmutableList<const CXXBaseSpecifier *> prependCXXBase(
-      const CXXBaseSpecifier *CBS,
-      llvm::ImmutableList<const CXXBaseSpecifier *> L) {
+  llvm::ImmutableList<const CXXBaseSpecifier *>
+  prependCXXBase(const CXXBaseSpecifier *CBS,
+                 llvm::ImmutableList<const CXXBaseSpecifier *> L) {
     return CXXBaseListFactory.add(CBS, L);
   }
 
-  const clang::ento::PointerToMemberData *accumCXXBase(
-      llvm::iterator_range<CastExpr::path_const_iterator> PathRange,
-      const nonloc::PointerToMember &PTM);
+  const clang::ento::PointerToMemberData *
+  accumCXXBase(llvm::iterator_range<CastExpr::path_const_iterator> PathRange,
+               const nonloc::PointerToMember &PTM);
 
-  const llvm::APSInt* evalAPSInt(BinaryOperator::Opcode Op,
-                                     const llvm::APSInt& V1,
-                                     const llvm::APSInt& V2);
+  const llvm::APSInt *evalAPSInt(BinaryOperator::Opcode Op,
+                                 const llvm::APSInt &V1,
+                                 const llvm::APSInt &V2);
 
-  const std::pair<SVal, uintptr_t>&
-  getPersistentSValWithData(const SVal& V, uintptr_t Data);
+  const llvm::APFloat *evalAPFloat(BinaryOperator::Opcode Op,
+                                   const llvm::APFloat &V1,
+                                   const llvm::APFloat &V2);
 
-  const std::pair<SVal, SVal>&
-  getPersistentSValPair(const SVal& V1, const SVal& V2);
+  const llvm::APSInt *evalAPFloatComparison(BinaryOperator::Opcode Op,
+                                            const llvm::APFloat &V1,
+                                            const llvm::APFloat &V2);
 
-  const SVal* getPersistentSVal(SVal X);
+  const std::pair<SVal, uintptr_t> &getPersistentSValWithData(const SVal &V,
+                                                              uintptr_t Data);
+
+  const std::pair<SVal, SVal> &getPersistentSValPair(const SVal &V1,
+                                                     const SVal &V2);
+
+  const SVal *getPersistentSVal(SVal X);
 };
 
-} // end GR namespace
+} // namespace ento
 
-} // end clang namespace
+} // namespace clang
 
 #endif

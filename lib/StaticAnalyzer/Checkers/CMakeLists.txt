@@ -36,6 +36,7 @@ add_clang_library(clangStaticAnalyzerCheckers
   DynamicTypeChecker.cpp
   ExprInspectionChecker.cpp
   FixedAddressChecker.cpp
+  FloatingPointMath.cpp
   GenericTaintChecker.cpp
   GTestChecker.cpp
   IdenticalExprChecker.cpp

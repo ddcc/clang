@@ -53,9 +53,6 @@ ProgramStateRef SimpleConstraintManager::assume(ProgramStateRef State,
 ProgramStateRef SimpleConstraintManager::assumeAux(ProgramStateRef State,
                                                    NonLoc Cond,
                                                    bool Assumption) {
-
-  // We cannot reason about SymSymExprs, and can only reason about some
-  // SymIntExprs.
   if (!canReasonAbout(Cond)) {
     // Just add the constraint to the expression without trying to simplify.
     SymbolRef Sym = Cond.getAsSymExpr();
@@ -72,6 +69,12 @@ ProgramStateRef SimpleConstraintManager::assumeAux(ProgramStateRef State,
     SymbolRef Sym = SV.getSymbol();
     assert(Sym);
     return assumeSym(State, Sym, Assumption);
+  }
+
+  case nonloc::ConcreteFloatKind: {
+    bool b = !Cond.castAs<nonloc::ConcreteFloat>().getValue().isZero();
+    bool isFeasible = b ? Assumption : !Assumption;
+    return isFeasible ? State : nullptr;
   }
 
   case nonloc::ConcreteIntKind: {
@@ -117,7 +120,31 @@ ProgramStateRef SimpleConstraintManager::assumeInclusiveRange(
     if (SymbolRef Sym = Value.getAsSymbol())
       return assumeSymInclusiveRange(State, Sym, From, To, InRange);
     return State;
-  } // end switch
+  }
+
+  case nonloc::ConcreteFloatKind: {
+    BasicValueFactory &BVF = getBasicVals();
+
+    const llvm::APFloat &FloatVal =
+        Value.castAs<nonloc::ConcreteFloat>().getValue();
+    llvm::APFloat FromF(FloatVal.getSemantics(), llvm::APFloat::uninitialized);
+    llvm::APFloat ToF(FloatVal.getSemantics(), llvm::APFloat::uninitialized);
+    bool isOk = BVF.Convert(FromF, From);
+    assert(isOk && "Integer failed to convert to float!");
+    (void)isOk;
+    isOk = BVF.Convert(ToF, To);
+    assert(isOk && "Integer failed to convert to float!");
+    (void)isOk;
+    llvm::APFloat::cmpResult CompareFrom = FloatVal.compare(FromF);
+    llvm::APFloat::cmpResult CompareTo = FloatVal.compare(ToF);
+
+    bool IsInRange = (CompareFrom == llvm::APFloat::cmpGreaterThan ||
+                      CompareFrom == llvm::APFloat::cmpEqual) &&
+                     (CompareTo == llvm::APFloat::cmpLessThan ||
+                      CompareTo == llvm::APFloat::cmpEqual);
+    bool isFeasible = (IsInRange == InRange);
+    return isFeasible ? State : nullptr;
+  }
 
   case nonloc::ConcreteIntKind: {
     const llvm::APSInt &IntVal = Value.castAs<nonloc::ConcreteInt>().getValue();

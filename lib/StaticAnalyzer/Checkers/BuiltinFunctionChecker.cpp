@@ -59,6 +59,80 @@ bool BuiltinFunctionChecker::evalCall(const CallExpr *CE,
     return true;
   }
 
+  case Builtin::BI__builtin_inf:
+  case Builtin::BI__builtin_inff:
+  case Builtin::BI__builtin_infl: {
+    SValBuilder &SVB = C.getSValBuilder();
+    ASTContext &Ctx = SVB.getContext();
+    llvm::APFloat Inf = llvm::APFloat::getInf(
+        Ctx.getFloatTypeSemantics(FD->getReturnType()));
+    SVal V = SVB.makeFloatVal(Inf);
+    C.addTransition(state->BindExpr(CE, LCtx, V));
+    return true;
+  }
+
+  // TODO: Model the string argument as well
+  case Builtin::BI__builtin_nan:
+  case Builtin::BI__builtin_nanf:
+  case Builtin::BI__builtin_nanl: {
+    SValBuilder &SVB = C.getSValBuilder();
+    ASTContext &Ctx = SVB.getContext();
+    llvm::APFloat NaN = llvm::APFloat::getQNaN(
+        Ctx.getFloatTypeSemantics(FD->getReturnType()));
+    SVal V = SVB.makeFloatVal(NaN);
+    C.addTransition(state->BindExpr(CE, LCtx, V));
+    return true;
+  }
+
+  case Builtin::BI__builtin_isinf: {
+    SValBuilder &SVB = C.getSValBuilder();
+    ASTContext &Ctx = SVB.getContext();
+    assert(CE->arg_begin() + 1 == CE->arg_end());
+    DefinedOrUnknownSVal V =
+        state->getSVal(*(CE->arg_begin()), LCtx).castAs<DefinedOrUnknownSVal>();
+
+    llvm::APFloat PInf = llvm::APFloat::getInf(
+        Ctx.getFloatTypeSemantics((*(CE->arg_begin()))->getType()), false);
+    DefinedOrUnknownSVal SPInf = SVB.makeFloatVal(PInf);
+    DefinedOrUnknownSVal isPInf = SVB.evalEQ(state, V, SPInf);
+    if (isPInf.isConstant(1)) {
+      C.addTransition(state->BindExpr(CE, LCtx, isPInf));
+      return true;
+    }
+
+    llvm::APFloat NInf = llvm::APFloat::getInf(
+        Ctx.getFloatTypeSemantics((*(CE->arg_begin()))->getType()), true);
+    DefinedOrUnknownSVal SNInf = SVB.makeFloatVal(NInf);
+    DefinedOrUnknownSVal isNInf = SVB.evalEQ(state, V, SNInf);
+    if (isPInf.isZeroConstant() && isNInf.isConstant(1)) {
+      C.addTransition(state->BindExpr(CE, LCtx, isNInf));
+      return true;
+    }
+
+    // TODO: FIXME
+    // This should be BO_LOr for (V == -\inf) || (V == \inf), but logical
+    // operations are handled much earlier during ExplodedGraph generation.
+    // However, since both sides are Boolean/Int1Ty, we can use bitwise or.
+    // If/when this is fixed, also remove the explicit short-circuits above.
+    SVal isInf = SVB.evalBinOp(state, BO_Or, isPInf, isNInf,
+                               SVB.getConditionType());
+    C.addTransition(state->BindExpr(CE, LCtx, isInf));
+    return true;
+  }
+
+  // TODO: FIXME
+  // IEEE-754 changes evaluation of direct comparison to NaN, which makes it
+  // difficult to express NaN constraints for the symbolic executor.
+  // As a workaround, express this as V != V, for which only NaN satisfies.
+  case Builtin::BI__builtin_isnan: {
+    SValBuilder &SVB = C.getSValBuilder();
+    assert(CE->arg_begin() + 1 == CE->arg_end());
+    SVal V = state->getSVal(*(CE->arg_begin()), LCtx);
+    SVal isNaN = SVB.evalBinOp(state, BO_NE, V, V, SVB.getConditionType());
+    C.addTransition(state->BindExpr(CE, LCtx, isNaN));
+    return true;
+  }
+
   case Builtin::BI__builtin_unpredictable:
   case Builtin::BI__builtin_expect:
   case Builtin::BI__builtin_assume_aligned:

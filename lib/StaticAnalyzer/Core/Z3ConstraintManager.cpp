@@ -904,10 +904,15 @@ public:
 
   bool canReasonAbout(SVal X) const override;
 
+  bool canReasonAboutFloats() const override;
+
   ConditionTruthVal checkNull(ProgramStateRef State, SymbolRef Sym) override;
 
-  const llvm::APSInt *getSymVal(ProgramStateRef State,
-                                SymbolRef Sym) const override;
+  const llvm::APSInt *getSymIntVal(ProgramStateRef State,
+                                   SymbolRef Sym) const override;
+
+  const llvm::APFloat *getSymFloatVal(ProgramStateRef State,
+                                      SymbolRef Sym) const override;
 
   ProgramStateRef removeDeadBindings(ProgramStateRef St,
                                      SymbolReaper &SymReaper) override;
@@ -983,6 +988,10 @@ private:
   // Helper functions.
   //===------------------------------------------------------------------===//
 
+  // Recover the QualType of an APFloat.
+  // TODO: Refactor to put elsewhere
+  QualType getAPFloatType(const llvm::APFloat &Float) const;
+
   // Recover the QualType of an APSInt.
   // TODO: Refactor to put elsewhere
   QualType getAPSIntType(const llvm::APSInt &Int) const;
@@ -1011,6 +1020,11 @@ private:
             T(doCast)(const T &, QualType, uint64_t, QualType, uint64_t)>
   void doFloatTypeConversion(T &LHS, QualType &LTy, T &RHS,
                              QualType &RTy) const;
+
+  // Callback function for doCast parameter on APFloat type.
+  static llvm::APFloat castAPFloat(const llvm::APFloat &V, QualType ToTy,
+                                   uint64_t ToWidth, QualType FromTy,
+                                   uint64_t FromWidth);
 
   // Callback function for doCast parameter on APSInt type.
   static llvm::APSInt castAPSInt(const llvm::APSInt &V, QualType ToTy,
@@ -1103,6 +1117,10 @@ bool Z3ConstraintManager::canReasonAbout(SVal X) const {
         Sym = SIE->getLHS();
       } else if (const IntSymExpr *ISE = dyn_cast<IntSymExpr>(BSE)) {
         Sym = ISE->getRHS();
+      } else if (const SymFloatExpr *SFE = dyn_cast<SymFloatExpr>(BSE)) {
+        Sym = SFE->getLHS();
+      } else if (const FloatSymExpr *FSE = dyn_cast<FloatSymExpr>(BSE)) {
+        Sym = FSE->getRHS();
       } else if (const SymSymExpr *SSM = dyn_cast<SymSymExpr>(BSE)) {
         return canReasonAbout(nonloc::SymbolVal(SSM->getLHS())) &&
                canReasonAbout(nonloc::SymbolVal(SSM->getRHS()));
@@ -1116,6 +1134,8 @@ bool Z3ConstraintManager::canReasonAbout(SVal X) const {
 
   return true;
 }
+
+bool Z3ConstraintManager::canReasonAboutFloats() const { return true; }
 
 ConditionTruthVal Z3ConstraintManager::checkNull(ProgramStateRef State,
                                                  SymbolRef Sym) {
@@ -1148,8 +1168,10 @@ ConditionTruthVal Z3ConstraintManager::checkNull(ProgramStateRef State,
   return ConditionTruthVal();
 }
 
-const llvm::APSInt *Z3ConstraintManager::getSymVal(ProgramStateRef State,
-                                                   SymbolRef Sym) const {
+// TODO: Merge implementation of getSymIntVal() and getSymFloatVal() into one
+// templated function, to avoid weird corner cases when casting back and forth
+const llvm::APSInt *Z3ConstraintManager::getSymIntVal(ProgramStateRef State,
+                                                      SymbolRef Sym) const {
   BasicValueFactory &BVF = getBasicVals();
   ASTContext &Ctx = BVF.getContext();
 
@@ -1193,22 +1215,59 @@ const llvm::APSInt *Z3ConstraintManager::getSymVal(ProgramStateRef State,
     if (CastTy->isVoidType())
       return nullptr;
 
-    const llvm::APSInt *Value;
-    if (!(Value = getSymVal(State, CastSym)))
-      return nullptr;
-    return &BVF.Convert(SC->getType(), *Value);
+    // Call the other getSym*Val() function depending on expression type
+    if (CastSym->getType()->isRealFloatingType()) {
+      const llvm::APFloat *Float = getSymFloatVal(State, CastSym);
+      assert(!CastTy->isRealFloatingType());
+      llvm::APSInt Int(Ctx.getTypeSize(CastTy),
+                       !CastTy->isSignedIntegerOrEnumerationType());
+      if (!Float || !BVF.Convert(Int, *Float))
+        return nullptr;
+      return &BVF.getValue(Int);
+    } else {
+      const llvm::APSInt *Value;
+      if (!(Value = getSymIntVal(State, CastSym)))
+        return nullptr;
+      return &BVF.Convert(CastTy, *Value);
+    }
   } else if (const BinarySymExpr *BSE = dyn_cast<BinarySymExpr>(Sym)) {
+    // Floating-point comparisons produce an integral result
+    if (BinaryOperator::isComparisonOp(BSE->getOpcode()) &&
+        (isa<FloatSymExpr>(BSE) || isa<SymFloatExpr>(BSE) ||
+         (isa<SymSymExpr>(BSE) &&
+          (cast<SymSymExpr>(BSE)->getLHS()->getType()->isFloatingType() ||
+           cast<SymSymExpr>(BSE)->getRHS()->getType()->isFloatingType())))) {
+      const llvm::APFloat *LHS = nullptr, *RHS = nullptr;
+      if (const FloatSymExpr *FSE = dyn_cast<FloatSymExpr>(BSE)) {
+        LHS = &FSE->getLHS();
+        RHS = getSymFloatVal(State, FSE->getRHS());
+      } else if (const SymFloatExpr *SFE = dyn_cast<SymFloatExpr>(BSE)) {
+        LHS = getSymFloatVal(State, SFE->getLHS());
+        RHS = &SFE->getRHS();
+      }
+
+      if (!LHS || !RHS)
+        return nullptr;
+
+      llvm::APFloat ConvertedLHS = *LHS, ConvertedRHS = *RHS;
+      QualType LTy = getAPFloatType(*LHS), RTy = getAPFloatType(*RHS);
+      doFloatTypeConversion<llvm::APFloat, Z3ConstraintManager::castAPFloat>(
+          ConvertedLHS, LTy, ConvertedRHS, RTy);
+      return BVF.evalAPFloatComparison(BSE->getOpcode(), ConvertedLHS,
+                                       ConvertedRHS);
+    }
+
     const llvm::APSInt *LHS, *RHS;
     if (const SymIntExpr *SIE = dyn_cast<SymIntExpr>(BSE)) {
-      LHS = getSymVal(State, SIE->getLHS());
+      LHS = getSymIntVal(State, SIE->getLHS());
       RHS = &SIE->getRHS();
     } else if (const IntSymExpr *ISE = dyn_cast<IntSymExpr>(BSE)) {
       LHS = &ISE->getLHS();
-      RHS = getSymVal(State, ISE->getRHS());
+      RHS = getSymIntVal(State, ISE->getRHS());
     } else if (const SymSymExpr *SSM = dyn_cast<SymSymExpr>(BSE)) {
       // Early termination to avoid expensive call
-      LHS = getSymVal(State, SSM->getLHS());
-      RHS = LHS ? getSymVal(State, SSM->getRHS()) : nullptr;
+      LHS = getSymIntVal(State, SSM->getLHS());
+      RHS = LHS ? getSymIntVal(State, SSM->getRHS()) : nullptr;
     } else {
       llvm_unreachable("Unsupported binary expression to get symbol value!");
     }
@@ -1224,6 +1283,92 @@ const llvm::APSInt *Z3ConstraintManager::getSymVal(ProgramStateRef State,
   }
 
   llvm_unreachable("Unsupported expression to get symbol value!");
+}
+
+const llvm::APFloat *Z3ConstraintManager::getSymFloatVal(ProgramStateRef State,
+                                                         SymbolRef Sym) const {
+  BasicValueFactory &BVF = getBasicVals();
+  ASTContext &Ctx = BVF.getContext();
+
+  if (const SymbolData *SD = dyn_cast<SymbolData>(Sym)) {
+    QualType Ty = Sym->getType();
+    assert(Ty->isRealFloatingType());
+    llvm::APFloat Value(Ctx.getFloatTypeSemantics(Ty));
+
+    Z3Expr Exp = getZ3DataExpr(SD->getSymbolID(), Ty);
+
+    Solver.reset();
+    Solver.addStateConstraints(State);
+
+    // Constraints are unsatisfiable
+    if (Solver.check() != Z3_L_TRUE)
+      return nullptr;
+
+    Z3Model Model = Solver.getModel();
+    // Model does not assign interpretation
+    if (!Model.getInterpretation(Exp, Value))
+      return nullptr;
+
+    // A value has been obtained, check if it is the only value
+    Z3Expr NotExp =
+        Z3Expr::fromFloatBinOp(Exp, BO_NE, Z3Expr::fromAPFloat(Value));
+
+    Solver.addConstraint(NotExp);
+    if (Solver.check() == Z3_L_TRUE)
+      return nullptr;
+
+    // This is the only solution, store it
+    return &BVF.getValue(Value);
+  } else if (const SymbolCast *SC = dyn_cast<SymbolCast>(Sym)) {
+    SymbolRef CastSym = SC->getOperand();
+    QualType CastTy = SC->getType();
+    // Skip the void type
+    if (CastTy->isVoidType())
+      return nullptr;
+
+    // Call the other getSym*Val() function depending on expression type
+    if (!CastSym->getType()->isRealFloatingType()) {
+      const llvm::APSInt *Int = getSymIntVal(State, CastSym);
+      assert(CastTy->isRealFloatingType());
+      llvm::APFloat Float(Ctx.getFloatTypeSemantics(CastTy));
+      if (!Int || !BVF.Convert(Float, *Int))
+        return nullptr;
+      return &BVF.getValue(Float);
+    } else {
+      const llvm::APFloat *Value;
+      if (!(Value = getSymFloatVal(State, CastSym)))
+        return nullptr;
+      return &BVF.Convert(CastTy, *Value);
+    }
+  } else if (const BinarySymExpr *BSE = dyn_cast<BinarySymExpr>(Sym)) {
+    const llvm::APFloat *LHS, *RHS;
+    if (const SymFloatExpr *SIE = dyn_cast<SymFloatExpr>(BSE)) {
+      LHS = getSymFloatVal(State, SIE->getLHS());
+      RHS = &SIE->getRHS();
+    } else if (const FloatSymExpr *ISE = dyn_cast<FloatSymExpr>(BSE)) {
+      LHS = &ISE->getLHS();
+      RHS = getSymFloatVal(State, ISE->getRHS());
+    } else if (const SymSymExpr *SSM = dyn_cast<SymSymExpr>(BSE)) {
+      // Early termination to avoid expensive call
+      LHS = getSymFloatVal(State, SSM->getLHS());
+      RHS = LHS ? getSymFloatVal(State, SSM->getRHS()) : nullptr;
+    } else {
+      llvm_unreachable("Unsupported binary expression to get symbol value!");
+    }
+
+    if (!LHS || !RHS)
+      return nullptr;
+
+    llvm::APFloat ConvertedLHS = *LHS, ConvertedRHS = *RHS;
+    QualType LTy = getAPFloatType(*LHS), RTy = getAPFloatType(*RHS);
+    doFloatTypeConversion<llvm::APFloat, Z3ConstraintManager::castAPFloat>(
+        ConvertedLHS, LTy, ConvertedRHS, RTy);
+    return BVF.evalAPFloat(BSE->getOpcode(), ConvertedLHS, ConvertedRHS);
+  } else {
+    llvm_unreachable("Unsupported expression to get symbol value!");
+  }
+
+  return nullptr;
 }
 
 ProgramStateRef
@@ -1356,6 +1501,16 @@ Z3Expr Z3ConstraintManager::getZ3SymBinExpr(const BinarySymExpr *BSE,
     Z3Expr LHS = Z3Expr::fromAPSInt(fixAPSInt(ISE->getLHS(), NewLInt, &LTy));
     Z3Expr RHS = getZ3SymExpr(ISE->getRHS(), &RTy, hasComparison);
     return getZ3BinExpr(LHS, LTy, Op, RHS, RTy, RetTy);
+  } else if (const SymFloatExpr *SFE = dyn_cast<SymFloatExpr>(BSE)) {
+    RTy = getAPFloatType(SFE->getRHS());
+    Z3Expr LHS = getZ3SymExpr(SFE->getLHS(), &LTy, hasComparison);
+    Z3Expr RHS = Z3Expr::fromAPFloat(SFE->getRHS());
+    return getZ3BinExpr(LHS, LTy, Op, RHS, RTy, RetTy);
+  } else if (const FloatSymExpr *FSE = dyn_cast<FloatSymExpr>(BSE)) {
+    LTy = getAPFloatType(FSE->getLHS());
+    Z3Expr LHS = Z3Expr::fromAPFloat(FSE->getLHS());
+    Z3Expr RHS = getZ3SymExpr(FSE->getRHS(), &RTy, hasComparison);
+    return getZ3BinExpr(LHS, LTy, Op, RHS, RTy, RetTy);
   } else if (const SymSymExpr *SSM = dyn_cast<SymSymExpr>(BSE)) {
     Z3Expr LHS = getZ3SymExpr(SSM->getLHS(), &LTy, hasComparison);
     Z3Expr RHS = getZ3SymExpr(SSM->getRHS(), &RTy, hasComparison);
@@ -1401,6 +1556,12 @@ Z3Expr Z3ConstraintManager::getZ3BinExpr(const Z3Expr &LHS, QualType LTy,
 //===------------------------------------------------------------------===//
 // Helper functions.
 //===------------------------------------------------------------------===//
+
+QualType Z3ConstraintManager::getAPFloatType(const llvm::APFloat &Float) const {
+  ASTContext &Ctx = getBasicVals().getContext();
+  return Ctx.getRealTypeForBitwidth(
+      llvm::APFloat::getSizeInBits(Float.getSemantics()));
+}
 
 QualType Z3ConstraintManager::getAPSIntType(const llvm::APSInt &Int) const {
   ASTContext &Ctx = getBasicVals().getContext();
@@ -1595,14 +1756,29 @@ void Z3ConstraintManager::doFloatTypeConversion(T &LHS, QualType &LTy, T &RHS,
   // Note: Safe to skip updating bitwidth because this must terminate
   int order = Ctx.getFloatingTypeOrder(LTy, RTy);
   if (order > 0) {
-    RHS = Z3Expr::fromCast(RHS, LTy, LBitWidth, RTy, RBitWidth);
+    RHS = (*doCast)(RHS, LTy, LBitWidth, RTy, RBitWidth);
     RTy = LTy;
   } else if (order == 0) {
-    LHS = Z3Expr::fromCast(LHS, RTy, RBitWidth, LTy, LBitWidth);
+    LHS = (*doCast)(LHS, RTy, RBitWidth, LTy, LBitWidth);
     LTy = RTy;
   } else {
     llvm_unreachable("Unsupported floating-point type cast!");
   }
+}
+
+llvm::APFloat Z3ConstraintManager::castAPFloat(const llvm::APFloat &V,
+                                               QualType ToTy, uint64_t ToWidth,
+                                               QualType FromTy,
+                                               uint64_t FromWidth) {
+  bool lossOfPrecision;
+  llvm::APFloat To = V;
+  bool isOk =
+      !(To.convert(Z3Expr::getFloatSemantics(ToWidth),
+                   llvm::APFloat::rmNearestTiesToEven, &lossOfPrecision) &
+        (llvm::APFloat::opOverflow | llvm::APFloat::opInvalidOp));
+  assert(isOk && "Failed to convert integer to floating-point!");
+  (void)isOk;
+  return To;
 }
 
 llvm::APSInt Z3ConstraintManager::castAPSInt(const llvm::APSInt &V,

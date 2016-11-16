@@ -293,10 +293,12 @@ public:
 
   bool canReasonAbout(SVal X) const override;
 
+  bool canReasonAboutFloats() const override;
+
   ConditionTruthVal checkNull(ProgramStateRef State, SymbolRef Sym) override;
 
-  const llvm::APSInt *getSymVal(ProgramStateRef State,
-                                SymbolRef Sym) const override;
+  const llvm::APSInt *getSymIntVal(ProgramStateRef State,
+                                   SymbolRef Sym) const override;
 
   ProgramStateRef removeDeadBindings(ProgramStateRef State,
                                      SymbolReaper &SymReaper) override;
@@ -375,6 +377,9 @@ bool RangeConstraintManager::canReasonAbout(SVal X) const {
 
   const SymExpr *SE = SymVal->getSymbol();
   do {
+    if (SE->getType()->isFloatingType())
+      return false;
+
     if (isa<SymbolData>(SE)) {
       return true;
     }
@@ -425,6 +430,8 @@ bool RangeConstraintManager::canReasonAbout(SVal X) const {
   return true;
 }
 
+bool RangeConstraintManager::canReasonAboutFloats() const { return false; }
+
 ConditionTruthVal RangeConstraintManager::checkNull(ProgramStateRef State,
                                                     SymbolRef Sym) {
   const RangeSet *Ranges = State->get<ConstraintRange>(Sym);
@@ -449,8 +456,8 @@ ConditionTruthVal RangeConstraintManager::checkNull(ProgramStateRef State,
   return ConditionTruthVal();
 }
 
-const llvm::APSInt *RangeConstraintManager::getSymVal(ProgramStateRef St,
-                                                      SymbolRef Sym) const {
+const llvm::APSInt *RangeConstraintManager::getSymIntVal(ProgramStateRef St,
+                                                         SymbolRef Sym) const {
   const ConstraintRangeTy::data_type *T = St->get<ConstraintRange>(Sym);
   return T ? T->getConcreteValue() : nullptr;
 }

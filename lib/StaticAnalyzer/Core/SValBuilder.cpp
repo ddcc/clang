@@ -30,7 +30,7 @@ using namespace ento;
 // Basic SVal creation.
 //===----------------------------------------------------------------------===//
 
-void SValBuilder::anchor() { }
+void SValBuilder::anchor() {}
 
 DefinedOrUnknownSVal SValBuilder::makeZeroVal(QualType type) {
   if (Loc::isLocType(type))
@@ -43,12 +43,14 @@ DefinedOrUnknownSVal SValBuilder::makeZeroVal(QualType type) {
       type->isAnyComplexType())
     return makeCompoundVal(type, BasicVals.getEmptySValList());
 
-  // FIXME: Handle floats.
+  if (type->isRealFloatingType())
+    return makeFloatVal(0, type);
+
   return UnknownVal();
 }
 
 NonLoc SValBuilder::makeNonLoc(const SymExpr *lhs, BinaryOperator::Opcode op,
-                                const llvm::APSInt& rhs, QualType type) {
+                               const llvm::APSInt &rhs, QualType type) {
   // The Environment ensures we always get a persistent APSInt in
   // BasicValueFactory, so we don't need to get the APSInt from
   // BasicValueFactory again.
@@ -57,12 +59,30 @@ NonLoc SValBuilder::makeNonLoc(const SymExpr *lhs, BinaryOperator::Opcode op,
   return nonloc::SymbolVal(SymMgr.getSymIntExpr(lhs, op, rhs, type));
 }
 
-NonLoc SValBuilder::makeNonLoc(const llvm::APSInt& lhs,
+NonLoc SValBuilder::makeNonLoc(const llvm::APSInt &lhs,
                                BinaryOperator::Opcode op, const SymExpr *rhs,
                                QualType type) {
   assert(rhs);
   assert(!Loc::isLocType(type));
   return nonloc::SymbolVal(SymMgr.getIntSymExpr(lhs, op, rhs, type));
+}
+
+NonLoc SValBuilder::makeNonLoc(const SymExpr *lhs, BinaryOperator::Opcode op,
+                               const llvm::APFloat &rhs, QualType type) {
+  // The Environment ensures we always get a persistent APFloat in
+  // BasicValueFactory, so we don't need to get the APFloat from
+  // BasicValueFactory again.
+  assert(lhs);
+  assert(!Loc::isLocType(type));
+  return nonloc::SymbolVal(SymMgr.getSymFloatExpr(lhs, op, rhs, type));
+}
+
+NonLoc SValBuilder::makeNonLoc(const llvm::APFloat &lhs,
+                               BinaryOperator::Opcode op, const SymExpr *rhs,
+                               QualType type) {
+  assert(rhs);
+  assert(!Loc::isLocType(type));
+  return nonloc::SymbolVal(SymMgr.getFloatSymExpr(lhs, op, rhs, type));
 }
 
 NonLoc SValBuilder::makeNonLoc(const SymExpr *lhs, BinaryOperator::Opcode op,
@@ -72,8 +92,8 @@ NonLoc SValBuilder::makeNonLoc(const SymExpr *lhs, BinaryOperator::Opcode op,
   return nonloc::SymbolVal(SymMgr.getSymSymExpr(lhs, op, rhs, type));
 }
 
-NonLoc SValBuilder::makeNonLoc(const SymExpr *operand,
-                               QualType fromTy, QualType toTy) {
+NonLoc SValBuilder::makeNonLoc(const SymExpr *operand, QualType fromTy,
+                               QualType toTy) {
   assert(operand);
   assert(!Loc::isLocType(toTy));
   return nonloc::SymbolVal(SymMgr.getCastSymbol(operand, fromTy, toTy));
@@ -85,7 +105,7 @@ SVal SValBuilder::convertToArrayIndex(SVal val) {
 
   // Common case: we have an appropriately sized integer.
   if (Optional<nonloc::ConcreteInt> CI = val.getAs<nonloc::ConcreteInt>()) {
-    const llvm::APSInt& I = CI->getValue();
+    const llvm::APSInt &I = CI->getValue();
     if (I.getBitWidth() == ArrayIndexWidth && I.isSigned())
       return val;
   }
@@ -93,12 +113,13 @@ SVal SValBuilder::convertToArrayIndex(SVal val) {
   return evalCastFromNonLoc(val.castAs<NonLoc>(), ArrayIndexTy);
 }
 
-nonloc::ConcreteInt SValBuilder::makeBoolVal(const CXXBoolLiteralExpr *boolean){
+nonloc::ConcreteInt
+SValBuilder::makeBoolVal(const CXXBoolLiteralExpr *boolean) {
   return makeTruthVal(boolean->getValue());
 }
 
 DefinedOrUnknownSVal
-SValBuilder::getRegionValueSymbolVal(const TypedValueRegion* region) {
+SValBuilder::getRegionValueSymbolVal(const TypedValueRegion *region) {
   QualType T = region->getValueType();
 
   if (T->isNullPtrType())
@@ -152,7 +173,6 @@ DefinedOrUnknownSVal SValBuilder::conjureSymbolVal(const void *symbolTag,
   return nonloc::SymbolVal(sym);
 }
 
-
 DefinedOrUnknownSVal SValBuilder::conjureSymbolVal(const Stmt *stmt,
                                                    const LocationContext *LCtx,
                                                    QualType type,
@@ -171,10 +191,8 @@ DefinedOrUnknownSVal SValBuilder::conjureSymbolVal(const Stmt *stmt,
   return nonloc::SymbolVal(sym);
 }
 
-DefinedOrUnknownSVal
-SValBuilder::getConjuredHeapSymbolVal(const Expr *E,
-                                      const LocationContext *LCtx,
-                                      unsigned VisitCount) {
+DefinedOrUnknownSVal SValBuilder::getConjuredHeapSymbolVal(
+    const Expr *E, const LocationContext *LCtx, unsigned VisitCount) {
   QualType T = E->getType();
   assert(Loc::isLocType(T));
   assert(SymbolManager::canSymbolicate(T));
@@ -203,7 +221,7 @@ DefinedSVal SValBuilder::getMetadataSymbolVal(const void *symbolTag,
 
 DefinedOrUnknownSVal
 SValBuilder::getDerivedRegionValueSymbolVal(SymbolRef parentSymbol,
-                                             const TypedValueRegion *region) {
+                                            const TypedValueRegion *region) {
   QualType T = region->getValueType();
 
   if (T->isNullPtrType())
@@ -220,7 +238,7 @@ SValBuilder::getDerivedRegionValueSymbolVal(SymbolRef parentSymbol,
   return nonloc::SymbolVal(sym);
 }
 
-DefinedSVal SValBuilder::getMemberPointer(const DeclaratorDecl* DD) {
+DefinedSVal SValBuilder::getMemberPointer(const DeclaratorDecl *DD) {
   assert(!DD || isa<CXXMethodDecl>(DD) || isa<FieldDecl>(DD));
 
   if (auto *MD = dyn_cast_or_null<CXXMethodDecl>(DD)) {
@@ -244,18 +262,18 @@ DefinedSVal SValBuilder::getBlockPointer(const BlockDecl *block,
                                          CanQualType locTy,
                                          const LocationContext *locContext,
                                          unsigned blockCount) {
-  const BlockCodeRegion *BC =
-    MemMgr.getBlockCodeRegion(block, locTy, locContext->getAnalysisDeclContext());
-  const BlockDataRegion *BD = MemMgr.getBlockDataRegion(BC, locContext,
-                                                        blockCount);
+  const BlockCodeRegion *BC = MemMgr.getBlockCodeRegion(
+      block, locTy, locContext->getAnalysisDeclContext());
+  const BlockDataRegion *BD =
+      MemMgr.getBlockDataRegion(BC, locContext, blockCount);
   return loc::MemRegionVal(BD);
 }
 
 /// Return a memory region for the 'this' object reference.
 loc::MemRegionVal SValBuilder::getCXXThis(const CXXMethodDecl *D,
                                           const StackFrameContext *SFC) {
-  return loc::MemRegionVal(getRegionManager().
-                           getCXXThisRegion(D->getThisType(getContext()), SFC));
+  return loc::MemRegionVal(
+      getRegionManager().getCXXThisRegion(D->getThisType(getContext()), SFC));
 }
 
 /// Return a memory region for the 'this' object reference.
@@ -307,6 +325,9 @@ Optional<SVal> SValBuilder::getConstantVal(const Expr *E) {
   case Stmt::IntegerLiteralClass:
     return makeIntVal(cast<IntegerLiteral>(E));
 
+  case Stmt::FloatingLiteralClass:
+    return makeFloatVal(cast<FloatingLiteral>(E));
+
   case Stmt::ObjCBoolLiteralExprClass:
     return makeBoolVal(cast<ObjCBoolLiteralExpr>(E));
 
@@ -319,7 +340,8 @@ Optional<SVal> SValBuilder::getConstantVal(const Expr *E) {
     default:
       break;
     case CK_ArrayToPointerDecay:
-    case CK_BitCast: {
+    case CK_BitCast:
+    case CK_IntegralToFloating: {
       const Expr *SE = CE->getSubExpr();
       Optional<SVal> Val = getConstantVal(SE);
       if (!Val)
@@ -354,9 +376,10 @@ Optional<SVal> SValBuilder::getConstantVal(const Expr *E) {
 //===----------------------------------------------------------------------===//
 
 SVal SValBuilder::makeSymExprValNN(ProgramStateRef State,
-                                   BinaryOperator::Opcode Op,
-                                   NonLoc LHS, NonLoc RHS,
-                                   QualType ResultTy) {
+                                   BinaryOperator::Opcode Op, NonLoc LHS,
+                                   NonLoc RHS, QualType ResultTy) {
+  ConstraintManager &CM = getStateManager().getConstraintManager();
+
   const SymExpr *symLHS = LHS.getAsSymExpr();
   const SymExpr *symRHS = RHS.getAsSymExpr();
   // TODO: When the Max Complexity is reached, we should conjure a symbol
@@ -366,17 +389,35 @@ SVal SValBuilder::makeSymExprValNN(ProgramStateRef State,
       StateMgr.getOwningEngine()->getAnalysisManager().options;
   const unsigned MaxComp = Opts.getMaxTaintComplexity(); // 100000 28X
 
+  // If constraint manager doesn't support floating-point expressions, skip
+  // generating those constraints.
   if (symLHS && symRHS &&
-      (symLHS->computeComplexity() + symRHS->computeComplexity()) < MaxComp)
+      (symLHS->computeComplexity() + symRHS->computeComplexity()) < MaxComp) {
+    if (!CM.canReasonAboutFloats() && (symLHS->getType()->isFloatingType() ||
+                                       symRHS->getType()->isFloatingType()))
+      return UnknownVal();
     return makeNonLoc(symLHS, Op, symRHS, ResultTy);
+  }
 
-  if (symLHS && symLHS->computeComplexity() < MaxComp)
+  if (symLHS && symLHS->computeComplexity() < MaxComp) {
     if (Optional<nonloc::ConcreteInt> rInt = RHS.getAs<nonloc::ConcreteInt>())
       return makeNonLoc(symLHS, Op, rInt->getValue(), ResultTy);
+    if (Optional<nonloc::ConcreteFloat> rFloat =
+            RHS.getAs<nonloc::ConcreteFloat>()) {
+      if (CM.canReasonAboutFloats())
+        return makeNonLoc(symLHS, Op, rFloat->getValue(), ResultTy);
+    }
+  }
 
-  if (symRHS && symRHS->computeComplexity() < MaxComp)
+  if (symRHS && symRHS->computeComplexity() < MaxComp) {
     if (Optional<nonloc::ConcreteInt> lInt = LHS.getAs<nonloc::ConcreteInt>())
       return makeNonLoc(lInt->getValue(), Op, symRHS, ResultTy);
+    if (Optional<nonloc::ConcreteFloat> lFloat =
+            LHS.getAs<nonloc::ConcreteFloat>()) {
+      if (CM.canReasonAboutFloats())
+        return makeNonLoc(lFloat->getValue(), Op, symRHS, ResultTy);
+    }
+  }
 
   return UnknownVal();
 }
@@ -426,7 +467,7 @@ DefinedOrUnknownSVal SValBuilder::evalEQ(ProgramStateRef state,
 /// and restrict qualifiers. Also, assume that all types are similar to 'void'.
 /// Assumes the input types are canonical.
 static bool shouldBeModeledWithNoOp(ASTContext &Context, QualType ToTy,
-                                                         QualType FromTy) {
+                                    QualType FromTy) {
   while (Context.UnwrapSimilarPointerTypes(ToTy, FromTy)) {
     Qualifiers Quals1, Quals2;
     ToTy = Context.getUnqualifiedArrayType(ToTy, Quals1);
@@ -523,7 +564,7 @@ SVal SValBuilder::evalCast(SVal val, QualType castTy, QualType originalTy) {
   // For const casts, casts to void, just propagate the value.
   if (!castTy->isVariableArrayType() && !originalTy->isVariableArrayType())
     if (shouldBeModeledWithNoOp(Context, Context.getPointerType(castTy),
-                                         Context.getPointerType(originalTy)))
+                                Context.getPointerType(originalTy)))
       return val;
 
   // Check for casts from pointers to integers.
@@ -551,7 +592,7 @@ SVal SValBuilder::evalCast(SVal val, QualType castTy, QualType originalTy) {
 
   // Check for casts from array type to another type.
   if (const ArrayType *arrayT =
-                      dyn_cast<ArrayType>(originalTy.getCanonicalType())) {
+          dyn_cast<ArrayType>(originalTy.getCanonicalType())) {
     // We will always decay to a pointer.
     QualType elemTy = arrayT->getElementType();
     val = StateMgr.ArrayToPointer(val.castAs<Loc>(), elemTy);
@@ -581,14 +622,14 @@ SVal SValBuilder::evalCast(SVal val, QualType castTy, QualType originalTy) {
     // FIXME: We should handle the case where we strip off view layers to get
     //  to a desugared type.
     if (!Loc::isLocType(castTy)) {
-      // FIXME: There can be gross cases where one casts the result of a function
-      // (that returns a pointer) to some other value that happens to fit
-      // within that pointer value.  We currently have no good way to
-      // model such operations.  When this happens, the underlying operation
-      // is that the caller is reasoning about bits.  Conceptually we are
-      // layering a "view" of a location on top of those bits.  Perhaps
-      // we need to be more lazy about mutual possible views, even on an
-      // SVal?  This may be necessary for bit-level reasoning as well.
+      // FIXME: There can be gross cases where one casts the result of a
+      // function (that returns a pointer) to some other value that happens to
+      // fit within that pointer value.  We currently have no good way to model
+      // such operations.  When this happens, the underlying operation is that
+      // the caller is reasoning about bits.  Conceptually we are layering a
+      // "view" of a location on top of those bits.  Perhaps we need to be more
+      // lazy about mutual possible views, even on an SVal?  This may be
+      // necessary for bit-level reasoning as well.
       return UnknownVal();
     }
 

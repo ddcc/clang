@@ -1322,7 +1322,7 @@ RegionStoreManager::getSizeInElements(ProgramStateRef state,
                                       const MemRegion *R,
                                       QualType EleTy) {
   SVal Size = cast<SubRegion>(R)->getExtent(svalBuilder);
-  const llvm::APSInt *SizeInt = svalBuilder.getKnownValue(state, Size);
+  const llvm::APSInt *SizeInt = svalBuilder.getKnownIntValue(state, Size);
   if (!SizeInt)
     return UnknownVal();
 
@@ -2054,7 +2054,7 @@ RegionStoreManager::setImplicitDefaultValue(RegionBindingsConstRef B,
 
   if (Loc::isLocType(T))
     V = svalBuilder.makeNull();
-  else if (T->isIntegralOrEnumerationType())
+  else if (T->isIntegralOrEnumerationType() || T->isRealFloatingType())
     V = svalBuilder.makeZeroVal(T);
   else if (T->isStructureOrClassType() || T->isArrayType()) {
     // Set the default value to a zero constant when it is a structure

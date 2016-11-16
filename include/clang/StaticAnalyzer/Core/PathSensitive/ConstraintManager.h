@@ -29,6 +29,7 @@ class SubEngine;
 
 class ConditionTruthVal {
   Optional<bool> Val;
+
 public:
   /// Construct a ConditionTruthVal indicating the constraint is constrained
   /// to either true or false, depending on the boolean value provided.
@@ -38,25 +39,17 @@ public:
   ConditionTruthVal() {}
 
   /// Return true if the constraint is perfectly constrained to 'true'.
-  bool isConstrainedTrue() const {
-    return Val.hasValue() && Val.getValue();
-  }
+  bool isConstrainedTrue() const { return Val.hasValue() && Val.getValue(); }
 
   /// Return true if the constraint is perfectly constrained to 'false'.
-  bool isConstrainedFalse() const {
-    return Val.hasValue() && !Val.getValue();
-  }
+  bool isConstrainedFalse() const { return Val.hasValue() && !Val.getValue(); }
 
   /// Return true if the constrained is perfectly constrained.
-  bool isConstrained() const {
-    return Val.hasValue();
-  }
+  bool isConstrained() const { return Val.hasValue(); }
 
   /// Return true if the constrained is underconstrained and we do not know
   /// if the constraint is true of value.
-  bool isUnderconstrained() const {
-    return !Val.hasValue();
-  }
+  bool isUnderconstrained() const { return !Val.hasValue(); }
 };
 
 class ConstraintManager {
@@ -64,8 +57,7 @@ public:
   ConstraintManager() : NotifyAssumeClients(true) {}
 
   virtual ~ConstraintManager();
-  virtual ProgramStateRef assume(ProgramStateRef state,
-                                 DefinedSVal Cond,
+  virtual ProgramStateRef assume(ProgramStateRef state, DefinedSVal Cond,
                                  bool Assumption) = 0;
 
   typedef std::pair<ProgramStateRef, ProgramStateRef> ProgramStatePair;
@@ -93,7 +85,7 @@ public:
       // We are careful to return the original state, /not/ StTrue,
       // because we want to avoid having callers generate a new node
       // in the ExplodedGraph.
-      return ProgramStatePair(State, (ProgramStateRef)nullptr);
+      return ProgramStatePair(State, (ProgramStateRef) nullptr);
     }
 
     return ProgramStatePair(StTrue, StFalse);
@@ -115,7 +107,7 @@ public:
     // If StTrue is infeasible, asserting the falseness of Cond is unnecessary
     // because the existing constraints already establish this.
     if (!StInRange)
-      return ProgramStatePair((ProgramStateRef)nullptr, State);
+      return ProgramStatePair((ProgramStateRef) nullptr, State);
 
     ProgramStateRef StOutOfRange =
         assumeInclusiveRange(State, Value, From, To, false);
@@ -123,7 +115,7 @@ public:
       // We are careful to return the original state, /not/ StTrue,
       // because we want to avoid having callers generate a new node
       // in the ExplodedGraph.
-      return ProgramStatePair(State, (ProgramStateRef)nullptr);
+      return ProgramStatePair(State, (ProgramStateRef) nullptr);
     }
 
     return ProgramStatePair(StInRange, StOutOfRange);
@@ -134,19 +126,27 @@ public:
   ///
   /// Note that a ConstraintManager is not obligated to return a concretized
   /// value for a symbol, even if it is perfectly constrained.
-  virtual const llvm::APSInt* getSymVal(ProgramStateRef state,
-                                        SymbolRef sym) const {
+  virtual const llvm::APSInt *getSymIntVal(ProgramStateRef state,
+                                           SymbolRef sym) const {
+    return nullptr;
+  }
+
+  /// \brief If a symbol is perfectly constrained to a constant, attempt
+  /// to return the concrete value.
+  ///
+  /// Note that a ConstraintManager is not obligated to return a concretized
+  /// value for a symbol, even if it is perfectly constrained.
+  virtual const llvm::APFloat *getSymFloatVal(ProgramStateRef state,
+                                              SymbolRef sym) const {
     return nullptr;
   }
 
   /// Scan all symbols referenced by the constraints. If the symbol is not
   /// alive, remove it.
   virtual ProgramStateRef removeDeadBindings(ProgramStateRef state,
-                                                 SymbolReaper& SymReaper) = 0;
+                                             SymbolReaper &SymReaper) = 0;
 
-  virtual void print(ProgramStateRef state,
-                     raw_ostream &Out,
-                     const char* nl,
+  virtual void print(ProgramStateRef state, raw_ostream &Out, const char *nl,
                      const char *sep) = 0;
 
   virtual void EndPath(ProgramStateRef state) {}
@@ -158,6 +158,11 @@ public:
 
     return checkNull(State, Sym);
   }
+
+  /// canReasonAbout - Not all ConstraintManagers can reason about floating-
+  ///  point values.  Instead of first instantiating a floating-point SVal to
+  ///  query whether it is supported, use this to ask directly.
+  virtual bool canReasonAboutFloats() const = 0;
 
 protected:
   /// A flag to indicate that clients should be notified of assumptions.
@@ -187,8 +192,8 @@ CreateRangeConstraintManager(ProgramStateManager &statemgr,
 std::unique_ptr<ConstraintManager>
 CreateZ3ConstraintManager(ProgramStateManager &statemgr, SubEngine *subengine);
 
-} // end GR namespace
+} // namespace ento
 
-} // end clang namespace
+} // namespace clang
 
 #endif

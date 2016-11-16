@@ -31,9 +31,10 @@ namespace ento {
 
 class SValBuilder {
   virtual void anchor();
+
 protected:
   ASTContext &Context;
-  
+
   /// Manager of APSInt values.
   BasicValueFactory BasicVals;
 
@@ -47,7 +48,7 @@ protected:
 
   /// The scalar type to use for array indices.
   const QualType ArrayIndexTy;
-  
+
   /// The width of the scalar type used for array indices.
   const unsigned ArrayIndexWidth;
 
@@ -62,12 +63,10 @@ public:
 public:
   SValBuilder(llvm::BumpPtrAllocator &alloc, ASTContext &context,
               ProgramStateManager &stateMgr)
-    : Context(context), BasicVals(context, alloc),
-      SymMgr(context, BasicVals, alloc),
-      MemMgr(context, alloc),
-      StateMgr(stateMgr),
-      ArrayIndexTy(context.LongLongTy),
-      ArrayIndexWidth(context.getTypeSize(ArrayIndexTy)) {}
+      : Context(context), BasicVals(context, alloc),
+        SymMgr(context, BasicVals, alloc), MemMgr(context, alloc),
+        StateMgr(stateMgr), ArrayIndexTy(context.LongLongTy),
+        ArrayIndexWidth(context.getTypeSize(ArrayIndexTy)) {}
 
   virtual ~SValBuilder() {}
 
@@ -109,22 +108,28 @@ public:
   virtual SVal evalBinOpLN(ProgramStateRef state, BinaryOperator::Opcode op,
                            Loc lhs, NonLoc rhs, QualType resultTy) = 0;
 
-  /// Evaluates a given SVal. If the SVal has only one possible (integer) value,
+  /// Evaluates a given SVal. If the SVal has only one possible integer value,
   /// that value is returned. Otherwise, returns NULL.
-  virtual const llvm::APSInt *getKnownValue(ProgramStateRef state, SVal val) = 0;
+  virtual const llvm::APSInt *getKnownIntValue(ProgramStateRef state,
+                                            SVal val) = 0;
+
+  /// Evaluates a given SVal. If the SVal has only one possible float value,
+  /// that value is returned. Otherwise, returns NULL.
+  virtual const llvm::APFloat *getKnownFloatValue(ProgramStateRef state,
+                                                  SVal val) = 0;
 
   /// Simplify symbolic expressions within a given SVal. Return an SVal
   /// that represents the same value, but is hopefully easier to work with
   /// than the original SVal.
   virtual SVal simplifySVal(ProgramStateRef State, SVal Val) = 0;
-  
+
   /// Constructs a symbolic expression for two non-location values.
   SVal makeSymExprValNN(ProgramStateRef state, BinaryOperator::Opcode op,
-                      NonLoc lhs, NonLoc rhs, QualType resultTy);
+                        NonLoc lhs, NonLoc rhs, QualType resultTy);
 
-  SVal evalBinOp(ProgramStateRef state, BinaryOperator::Opcode op,
-                 SVal lhs, SVal rhs, QualType type);
-  
+  SVal evalBinOp(ProgramStateRef state, BinaryOperator::Opcode op, SVal lhs,
+                 SVal rhs, QualType type);
+
   DefinedOrUnknownSVal evalEQ(ProgramStateRef state, DefinedOrUnknownSVal lhs,
                               DefinedOrUnknownSVal rhs);
 
@@ -132,14 +137,12 @@ public:
   const ASTContext &getContext() const { return Context; }
 
   ProgramStateManager &getStateManager() { return StateMgr; }
-  
+
   QualType getConditionType() const {
     return Context.getLangOpts().CPlusPlus ? Context.BoolTy : Context.IntTy;
   }
-  
-  QualType getArrayIndexType() const {
-    return ArrayIndexTy;
-  }
+
+  QualType getArrayIndexType() const { return ArrayIndexTy; }
 
   BasicValueFactory &getBasicValueFactory() { return BasicVals; }
   const BasicValueFactory &getBasicValueFactory() const { return BasicVals; }
@@ -152,15 +155,14 @@ public:
 
   // Forwarding methods to SymbolManager.
 
-  const SymbolConjured* conjureSymbol(const Stmt *stmt,
+  const SymbolConjured *conjureSymbol(const Stmt *stmt,
                                       const LocationContext *LCtx,
-                                      QualType type,
-                                      unsigned visitCount,
+                                      QualType type, unsigned visitCount,
                                       const void *symbolTag = nullptr) {
     return SymMgr.conjureSymbol(stmt, LCtx, type, visitCount, symbolTag);
   }
 
-  const SymbolConjured* conjureSymbol(const Expr *expr,
+  const SymbolConjured *conjureSymbol(const Expr *expr,
                                       const LocationContext *LCtx,
                                       unsigned visitCount,
                                       const void *symbolTag = nullptr) {
@@ -179,20 +181,16 @@ public:
   /// The advantage of symbols derived/built from other symbols is that we
   /// preserve the relation between related(or even equivalent) expressions, so
   /// conjured symbols should be used sparingly.
-  DefinedOrUnknownSVal conjureSymbolVal(const void *symbolTag,
-                                        const Expr *expr,
+  DefinedOrUnknownSVal conjureSymbolVal(const void *symbolTag, const Expr *expr,
                                         const LocationContext *LCtx,
                                         unsigned count);
-  DefinedOrUnknownSVal conjureSymbolVal(const void *symbolTag,
-                                        const Expr *expr,
+  DefinedOrUnknownSVal conjureSymbolVal(const void *symbolTag, const Expr *expr,
                                         const LocationContext *LCtx,
-                                        QualType type,
-                                        unsigned count);
-  
+                                        QualType type, unsigned count);
+
   DefinedOrUnknownSVal conjureSymbolVal(const Stmt *stmt,
                                         const LocationContext *LCtx,
-                                        QualType type,
-                                        unsigned visitCount);
+                                        QualType type, unsigned visitCount);
   /// \brief Conjure a symbol representing heap allocated memory region.
   ///
   /// Note, the expression should represent a location.
@@ -200,19 +198,19 @@ public:
                                                 const LocationContext *LCtx,
                                                 unsigned Count);
 
-  DefinedOrUnknownSVal getDerivedRegionValueSymbolVal(
-      SymbolRef parentSymbol, const TypedValueRegion *region);
+  DefinedOrUnknownSVal
+  getDerivedRegionValueSymbolVal(SymbolRef parentSymbol,
+                                 const TypedValueRegion *region);
 
   DefinedSVal getMetadataSymbolVal(const void *symbolTag,
-                                   const MemRegion *region,
-                                   const Expr *expr, QualType type,
-                                   const LocationContext *LCtx,
+                                   const MemRegion *region, const Expr *expr,
+                                   QualType type, const LocationContext *LCtx,
                                    unsigned count);
 
   DefinedSVal getMemberPointer(const DeclaratorDecl *DD);
 
   DefinedSVal getFunctionPointer(const FunctionDecl *func);
-  
+
   DefinedSVal getBlockPointer(const BlockDecl *block, CanQualType locTy,
                               const LocationContext *locContext,
                               unsigned blockCount);
@@ -227,7 +225,7 @@ public:
     return nonloc::CompoundVal(BasicVals.getCompoundValData(type, vals));
   }
 
-  NonLoc makeLazyCompoundVal(const StoreRef &store, 
+  NonLoc makeLazyCompoundVal(const StoreRef &store,
                              const TypedValueRegion *region) {
     return nonloc::LazyCompoundVal(
         BasicVals.getLazyCompoundValData(store, region));
@@ -251,10 +249,10 @@ public:
 
   SVal convertToArrayIndex(SVal val);
 
-  nonloc::ConcreteInt makeIntVal(const IntegerLiteral* integer) {
-    return nonloc::ConcreteInt(
-        BasicVals.getValue(integer->getValue(),
-                     integer->getType()->isUnsignedIntegerOrEnumerationType()));
+  nonloc::ConcreteInt makeIntVal(const IntegerLiteral *integer) {
+    return nonloc::ConcreteInt(BasicVals.getValue(
+        integer->getValue(),
+        integer->getType()->isUnsignedIntegerOrEnumerationType()));
   }
 
   nonloc::ConcreteInt makeBoolVal(const ObjCBoolLiteralExpr *boolean) {
@@ -263,7 +261,7 @@ public:
 
   nonloc::ConcreteInt makeBoolVal(const CXXBoolLiteralExpr *boolean);
 
-  nonloc::ConcreteInt makeIntVal(const llvm::APSInt& integer) {
+  nonloc::ConcreteInt makeIntVal(const llvm::APSInt &integer) {
     return nonloc::ConcreteInt(BasicVals.getValue(integer));
   }
 
@@ -271,7 +269,7 @@ public:
     return loc::ConcreteInt(BasicVals.getValue(integer));
   }
 
-  NonLoc makeIntVal(const llvm::APInt& integer, bool isUnsigned) {
+  NonLoc makeIntVal(const llvm::APInt &integer, bool isUnsigned) {
     return nonloc::ConcreteInt(BasicVals.getValue(integer, isUnsigned));
   }
 
@@ -295,11 +293,31 @@ public:
     return nonloc::LocAsInteger(BasicVals.getPersistentSValWithData(loc, bits));
   }
 
-  NonLoc makeNonLoc(const SymExpr *lhs, BinaryOperator::Opcode op,
-                    const llvm::APSInt& rhs, QualType type);
+  nonloc::ConcreteFloat makeFloatVal(const FloatingLiteral *F) {
+    return nonloc::ConcreteFloat(BasicVals.getValue(F->getValue()));
+  }
 
-  NonLoc makeNonLoc(const llvm::APSInt& rhs, BinaryOperator::Opcode op,
+  nonloc::ConcreteFloat makeFloatVal(const llvm::APFloat &F) {
+    return nonloc::ConcreteFloat(BasicVals.getValue(F));
+  }
+
+  DefinedSVal makeFloatVal(uint64_t V, QualType T) {
+    assert(!Loc::isLocType(T));
+    return nonloc::ConcreteFloat(
+        BasicVals.getValue(V, Context.getFloatTypeSemantics(T)));
+  }
+
+  NonLoc makeNonLoc(const SymExpr *lhs, BinaryOperator::Opcode op,
+                    const llvm::APSInt &rhs, QualType type);
+
+  NonLoc makeNonLoc(const llvm::APSInt &rhs, BinaryOperator::Opcode op,
                     const SymExpr *lhs, QualType type);
+
+  NonLoc makeNonLoc(const SymExpr *lhs, BinaryOperator::Opcode op,
+                    const llvm::APFloat &rhs, QualType type);
+
+  NonLoc makeNonLoc(const llvm::APFloat &lhs, BinaryOperator::Opcode op,
+                    const SymExpr *rhs, QualType type);
 
   NonLoc makeNonLoc(const SymExpr *lhs, BinaryOperator::Opcode op,
                     const SymExpr *rhs, QualType type);
@@ -322,23 +340,19 @@ public:
     return loc::ConcreteInt(BasicVals.getZeroWithTypeSize(type));
   }
 
-  Loc makeNull() {
-    return loc::ConcreteInt(BasicVals.getZeroWithPtrWidth());
-  }
+  Loc makeNull() { return loc::ConcreteInt(BasicVals.getZeroWithPtrWidth()); }
 
   Loc makeLoc(SymbolRef sym) {
     return loc::MemRegionVal(MemMgr.getSymbolicRegion(sym));
   }
 
-  Loc makeLoc(const MemRegion* region) {
-    return loc::MemRegionVal(region);
-  }
+  Loc makeLoc(const MemRegion *region) { return loc::MemRegionVal(region); }
 
   Loc makeLoc(const AddrLabelExpr *expr) {
     return loc::GotoLabel(expr->getLabel());
   }
 
-  Loc makeLoc(const llvm::APSInt& integer) {
+  Loc makeLoc(const llvm::APSInt &integer) {
     return loc::ConcreteInt(BasicVals.getValue(integer));
   }
 
@@ -351,12 +365,12 @@ public:
                                const StackFrameContext *SFC);
 };
 
-SValBuilder* createSimpleSValBuilder(llvm::BumpPtrAllocator &alloc,
+SValBuilder *createSimpleSValBuilder(llvm::BumpPtrAllocator &alloc,
                                      ASTContext &context,
                                      ProgramStateManager &stateMgr);
 
-} // end GR namespace
+} // namespace ento
 
-} // end clang namespace
+} // namespace clang
 
 #endif

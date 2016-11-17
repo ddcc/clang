@@ -728,11 +728,11 @@ bool ProgramState::isTainted(SymbolRef Sym, TaintTagType Kind) const {
       Tainted = Tainted || isTainted(SD->getParentSymbol(), Kind);
 
     // If memory region is tainted, data is also tainted.
-    if (const SymbolRegionValue *SRV = dyn_cast<SymbolRegionValue>(*SI))
+    else if (const SymbolRegionValue *SRV = dyn_cast<SymbolRegionValue>(*SI))
       Tainted = Tainted || isTainted(SRV->getRegion(), Kind);
 
-    // If If this is a SymbolCast from a tainted value, it's also tainted.
-    if (const SymbolCast *SC = dyn_cast<SymbolCast>(*SI))
+    // If this is a SymbolCast from a tainted value, it's also tainted.
+    else if (const SymbolCast *SC = dyn_cast<SymbolCast>(*SI))
       Tainted = Tainted || isTainted(SC->getOperand(), Kind);
 
     if (Tainted)

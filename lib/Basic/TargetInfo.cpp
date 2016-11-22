@@ -226,7 +226,7 @@ TargetInfo::RealType TargetInfo::getRealTypeByWidth(unsigned BitWidth) const {
     return Double;
 
   switch (BitWidth) {
-  case 96:
+  case 80:
     if (&getLongDoubleFormat() == &llvm::APFloat::x87DoubleExtended())
       return LongDouble;
     break;

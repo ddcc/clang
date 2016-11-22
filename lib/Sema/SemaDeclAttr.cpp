@@ -3557,7 +3557,7 @@ static void parseModeAttrArg(Sema &S, StringRef Str, unsigned &DestWidth,
       DestWidth = 64;
       break;
     case 'X':
-      DestWidth = 96;
+      DestWidth = 80;
       break;
     case 'T':
       DestWidth = 128;

@@ -89,28 +89,19 @@ SVal SimpleSValBuilder::evalCastFromNonLoc(NonLoc val, QualType castTy) {
   if (Optional<nonloc::LocAsInteger> LI = val.getAs<nonloc::LocAsInteger>()) {
     if (isLocType)
       return LI->getLoc();
-    // FIXME: Correctly support promotions/truncations.
-    unsigned castSize = Context.getIntWidth(castTy);
-    if (castSize == LI->getNumBits())
-      return val;
-    return makeLocAsInteger(LI->getLoc(), castSize);
+    return makeLocAsInteger(LI->getLoc(), Context.getTypeSize(castTy));
   }
 
   if (const SymExpr *se = val.getAsSymbolicExpression()) {
     QualType T = Context.getCanonicalType(se->getType());
-    // If types are the same or both are integers, ignore the cast.
-    // FIXME: Remove this hack when we support symbolic truncation/extension.
-    // HACK: If both castTy and T are integers, ignore the cast.  This is
-    // not a permanent solution.  Eventually we want to precisely handle
-    // extension/truncation of symbolic integers.  This prevents us from losing
-    // precision when we assign 'x = y' and 'y' is symbolic and x and y are
-    // different integer types.
+    // If types are the same, ignore the cast.
     if (haveSameType(T, castTy))
       return val;
 
-    if (!isLocType)
-      return makeNonLoc(se, T, castTy);
-    return UnknownVal();
+    if (isLocType)
+      return UnknownVal();
+
+    return makeNonLoc(se, T, castTy);
   }
 
   // If value is an unsupported constant, produce unknown.

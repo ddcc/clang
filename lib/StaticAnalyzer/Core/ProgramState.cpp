@@ -245,34 +245,15 @@ SVal ProgramState::getSVal(Loc location, QualType T) const {
 
       if (sym->getType()->isRealFloatingType()) {
         if (const llvm::APFloat *Float = CM.getSymFloatVal(this, sym)) {
-          // FIXME: Because we don't correctly model (yet) sign-extension
-          // and truncation of symbolic values, we need to convert
-          // the integer value to the correct signedness and bitwidth.
-          //
-          // This shows up in the following:
-          //
-          //   char foo();
-          //   unsigned x = foo();
-          //   if (x == 54)
-          //     ...
-          //
-          //  The symbolic value stored to 'x' is actually the conjured
-          //  symbol for the call to foo(); the type of that symbol is 'char',
-          //  not unsigned.
-          const llvm::APFloat &NewV = getBasicVals().Convert(T, *Float);
-
           assert(!V.getAs<Loc>() && "Loc::ConcreteFloat not supported!");
-          return nonloc::ConcreteFloat(NewV);
+          return nonloc::ConcreteFloat(*Float);
         }
       } else {
         if (const llvm::APSInt *Int = CM.getSymIntVal(this, sym)) {
-          // FIXME: Likewise
-          const llvm::APSInt &NewV = getBasicVals().Convert(T, *Int);
-
           if (V.getAs<Loc>())
-            return loc::ConcreteInt(NewV);
+            return loc::ConcreteInt(*Int);
           else
-            return nonloc::ConcreteInt(NewV);
+            return nonloc::ConcreteInt(*Int);
         }
       }
     }

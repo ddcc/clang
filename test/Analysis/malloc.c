@@ -1656,13 +1656,13 @@ void testOffsetZeroDoubleFree() {
 void testOffsetPassedToStrlen() {
   char * string = malloc(sizeof(char)*10);
   string += 1;
-  int length = strlen(string); // expected-warning {{Potential leak of memory pointed to by 'string'}}
+  size_t length = strlen(string); // expected-warning {{Potential leak of memory pointed to by 'string'}}
 }
 
 void testOffsetPassedToStrlenThenFree() {
   char * string = malloc(sizeof(char)*10);
   string += 1;
-  int length = strlen(string);
+  size_t length = strlen(string);
   free(string); // expected-warning {{Argument to free() is offset by 1 byte from the start of memory allocated by malloc()}}
 }
 
@@ -1705,7 +1705,7 @@ void *smallocNoWarn(size_t size) {
 }
 
 char *dupstrNoWarn(const char *s) {
-  const int len = strlen(s);
+  const size_t len = strlen(s);
   char *p = (char*) smallocNoWarn(len + 1);
   strcpy(p, s); // no-warning
   return p;
@@ -1721,7 +1721,7 @@ void *smallocWarn(size_t size) {
 }
 
 char *dupstrWarn(const char *s) {
-  const int len = strlen(s);
+  const size_t len = strlen(s);
   char *p = (char*) smallocWarn(len + 1);
   strcpy(p, s); // expected-warning{{String copy function overflows destination buffer}}
   return p;

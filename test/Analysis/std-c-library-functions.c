@@ -146,7 +146,7 @@ int isprint(int);
 void test_isgraph_isprint(int x) {
   char y = x;
   if (isgraph(y))
-    clang_analyzer_eval(isprint(x)); // expected-warning{{TRUE}}
+    clang_analyzer_eval(isprint(y)); // expected-warning{{TRUE}}
 }
 
 int isdigit(int);

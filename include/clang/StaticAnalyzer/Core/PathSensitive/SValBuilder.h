@@ -75,11 +75,7 @@ public:
   }
 
   bool haveSameType(QualType Ty1, QualType Ty2) {
-    // FIXME: Remove the second disjunct when we support symbolic
-    // truncation/extension.
-    return (Context.getCanonicalType(Ty1) == Context.getCanonicalType(Ty2) ||
-            (Ty1->isIntegralOrEnumerationType() &&
-             Ty2->isIntegralOrEnumerationType()));
+    return (Context.getCanonicalType(Ty1) == Context.getCanonicalType(Ty2));
   }
 
   SVal evalCast(SVal val, QualType castTy, QualType originalType);

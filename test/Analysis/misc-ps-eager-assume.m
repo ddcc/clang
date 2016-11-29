@@ -1,5 +1,4 @@
 // RUN: %clang_analyze_cc1 -analyzer-checker=core,alpha.core -analyzer-store=region -verify -fblocks %s -analyzer-eagerly-assume
-// expected-no-diagnostics
 
 // Delta-reduced header stuff (needed for test cases).
 typedef signed char BOOL;
@@ -56,7 +55,7 @@ void handle_assign_of_condition(int x) {
 void handle_symbolic_cast_in_condition(void) {
   NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
 
-  BOOL needsAnArray = [@"aString" isEqualToString:@"anotherString"];
+  BOOL needsAnArray = [@"aString" isEqualToString:@"anotherString"]; // expected-warning {{Assignment of a non-Boolean value}}
   NSMutableArray* array = needsAnArray ? [[NSMutableArray alloc] init] : 0;
   if(needsAnArray)
     [array release];

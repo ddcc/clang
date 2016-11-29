@@ -1,9 +1,11 @@
 // RUN: %clang_analyze_cc1 -analyzer-checker=core,alpha.core -analyzer-store=region -verify -triple x86_64-apple-darwin9 -Wno-incomplete-implementation %s
-// expected-no-diagnostics
 
 //===----------------------------------------------------------------------===//
 // Delta-debugging produced forward declarations.
 //===----------------------------------------------------------------------===//
+#ifdef ANALYZER_CM_Z3
+// expected-no-diagnostics
+#endif
 
 typedef signed char BOOL;
 typedef struct _NSZone NSZone;
@@ -40,7 +42,7 @@ typedef struct _NSZone NSZone;
 - (unsigned int)currentPathComponentIndex;
 - (void)setCurrentPathComponentIndex:(unsigned int)aCurrentPathComponentIndex;
 - (NSURL *)folderFeedURL;
-@end  
+@end
 
 @implementation IHGoogleDocsAdapter    - (id)initWithUsername:(NSString *)inUsername password:(NSString *)inPassword owner:(NSObject <IHGoogleDocsAdapterDelegate> *)owner {
   return 0;
@@ -55,9 +57,17 @@ typedef struct _NSZone NSZone;
 //===----------------------------------------------------------------------===//
 
 - (void)docListListFetchTicket:(GDataServiceTicket *)ticket               finishedWithFeed:(GDataFeedDocList *)feed {
+#ifdef ANALYZER_CM_Z3
   BOOL doGetDir = self.directoryPathComponents != 0 && self.currentPathComponentIndex < [self.directoryPathComponents count];
+#else
+  BOOL doGetDir = self.directoryPathComponents != 0 && self.currentPathComponentIndex < [self.directoryPathComponents count]; // expected-warning{{Assignment of a non-Boolean value}}
+#endif
   if (doGetDir)  {
+#ifdef ANALYZER_CM_Z3
     BOOL isDirExisting = [[self.feedDocList entries] count] > 0;
+#else
+    BOOL isDirExisting = [[self.feedDocList entries] count] > 0; // expected-warning{{Assignment of a non-Boolean value}}
+#endif
     if (isDirExisting)   {
       if (self.folderFeedURL != 0)    {
         if (++self.currentPathComponentIndex == [self.directoryPathComponents count])     {

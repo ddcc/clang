@@ -1,5 +1,4 @@
 // RUN: %clang_analyze_cc1 -analyzer-checker=core,alpha.core -analyzer-checker=deadcode.DeadStores,osx.cocoa.RetainCount -fblocks -verify -Wno-objc-root-class %s
-// expected-no-diagnostics
 
 typedef signed char BOOL;
 typedef unsigned int NSUInteger;
@@ -55,7 +54,7 @@ void foo_rdar8527823();
 - (void) bar_rbar8527823
 {
  @synchronized(self) {
-   BOOL isExec = baz_rdar8527823(); // no-warning
+   BOOL isExec = baz_rdar8527823(); // expected-warning {{Assignment of a non-Boolean value}}
    if (isExec) foo_rdar8527823();
  }
 }

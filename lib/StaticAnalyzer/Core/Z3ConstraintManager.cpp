@@ -681,12 +681,14 @@ public:
       Z3_get_numeral_uint64(Z3Context::ZC, AST,
                             reinterpret_cast<__uint64 *>(&Value[0]));
       if (Sort.getBitvectorSortSize() <= 64) {
-        Int = llvm::APSInt(llvm::APInt(Int.getBitWidth(), Value[0]), true);
+        Int = llvm::APSInt(llvm::APInt(Int.getBitWidth(), Value[0]),
+                           Int.isUnsigned());
       } else if (Sort.getBitvectorSortSize() == 128) {
         Z3Expr ASTHigh = Z3Expr(Z3_mk_extract(Z3Context::ZC, 127, 64, AST));
         Z3_get_numeral_uint64(Z3Context::ZC, AST,
                               reinterpret_cast<__uint64 *>(&Value[1]));
-        Int = llvm::APSInt(llvm::APInt(Int.getBitWidth(), Value), true);
+        Int = llvm::APSInt(llvm::APInt(Int.getBitWidth(), Value),
+                           Int.isUnsigned());
       } else {
         assert(false && "Bitwidth not supported!");
         return false;
@@ -702,7 +704,7 @@ public:
           llvm::APInt(Int.getBitWidth(),
                       Z3_get_bool_value(Z3Context::ZC, AST) == Z3_L_TRUE ? 1
                                                                          : 0),
-          true);
+          Int.isUnsigned());
       return true;
     }
   }
@@ -903,6 +905,8 @@ public:
   //===------------------------------------------------------------------===//
 
   bool canReasonAbout(SVal X) const override;
+
+  bool canReasonAboutSymbolicExtTrunc() const override;
 
   ConditionTruthVal checkNull(ProgramStateRef State, SymbolRef Sym) override;
 
@@ -1114,6 +1118,10 @@ bool Z3ConstraintManager::canReasonAbout(SVal X) const {
     }
   } while (Sym);
 
+  return true;
+}
+
+bool Z3ConstraintManager::canReasonAboutSymbolicExtTrunc() const {
   return true;
 }
 

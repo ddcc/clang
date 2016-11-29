@@ -121,7 +121,8 @@ ProgramStateRef SimpleConstraintManager::assumeInclusiveRange(
 
   case nonloc::ConcreteIntKind: {
     const llvm::APSInt &IntVal = Value.castAs<nonloc::ConcreteInt>().getValue();
-    bool IsInRange = IntVal >= From && IntVal <= To;
+    bool IsInRange = llvm::APSInt::compareValues(IntVal, From) != -1 &&
+                     llvm::APSInt::compareValues(IntVal, To) != 1;
     bool isFeasible = (IsInRange == InRange);
     return isFeasible ? State : nullptr;
   }

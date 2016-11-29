@@ -71,16 +71,8 @@ public:
 
   virtual ~SValBuilder() {}
 
-  bool haveSameType(const SymExpr *Sym1, const SymExpr *Sym2) {
-    return haveSameType(Sym1->getType(), Sym2->getType());
-  }
-
   bool haveSameType(QualType Ty1, QualType Ty2) {
-    // FIXME: Remove the second disjunct when we support symbolic
-    // truncation/extension.
-    return (Context.getCanonicalType(Ty1) == Context.getCanonicalType(Ty2) ||
-            (Ty1->isIntegralOrEnumerationType() &&
-             Ty2->isIntegralOrEnumerationType()));
+    return (Context.getCanonicalType(Ty1) == Context.getCanonicalType(Ty2));
   }
 
   SVal evalCast(SVal val, QualType castTy, QualType originalType);

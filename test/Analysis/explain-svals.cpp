@@ -41,11 +41,19 @@ void test_1(int param, void *ptr) {
 
 void test_2(char *ptr, int ext) {
   clang_analyzer_explain((void *) "asdf"); // expected-warning-re{{{{^pointer to element of type 'char' with index 0 of string literal "asdf"$}}}}
+#ifdef ANALYZER_CM_Z3
+  clang_analyzer_explain(strlen(ptr)); // expected-warning-re{{{{^cast of type 'int' of metadata of type 'unsigned long' tied to pointee of argument 'ptr'$}}}}
+#else
   clang_analyzer_explain(strlen(ptr)); // expected-warning-re{{{{^metadata of type 'unsigned long' tied to pointee of argument 'ptr'$}}}}
+#endif
   clang_analyzer_explain(conjure()); // expected-warning-re{{{{^symbol of type 'int' conjured at statement 'conjure\(\)'$}}}}
   clang_analyzer_explain(glob); // expected-warning-re{{{{^value derived from \(symbol of type 'int' conjured at statement 'conjure\(\)'\) for global variable 'glob'$}}}}
   clang_analyzer_explain(glob_ptr); // expected-warning-re{{{{^value derived from \(symbol of type 'int' conjured at statement 'conjure\(\)'\) for global variable 'glob_ptr'$}}}}
+#ifdef ANALYZER_CM_Z3
+  clang_analyzer_explain(clang_analyzer_getExtent(ptr)); // expected-warning-re{{{{^cast of type 'int' of extent of pointee of argument 'ptr'$}}}}
+#else
   clang_analyzer_explain(clang_analyzer_getExtent(ptr)); // expected-warning-re{{{{^extent of pointee of argument 'ptr'$}}}}
+#endif
   int *x = new int[ext];
   clang_analyzer_explain(x); // expected-warning-re{{{{^pointer to element of type 'int' with index 0 of heap segment that starts at symbol of type 'int \*' conjured at statement 'new int \[ext\]'$}}}}
   // Sic! What gets computed is the extent of the element-region.

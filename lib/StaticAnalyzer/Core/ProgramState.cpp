@@ -262,12 +262,12 @@ SVal ProgramState::getSVal(Loc location, QualType T) const {
   // about).
   if (!T.isNull()) {
     if (SymbolRef sym = V.getAsSymbol()) {
-      if (const llvm::APSInt *Int = getStateManager()
-                                    .getConstraintManager()
-                                    .getSymVal(this, sym)) {
+      ConstraintManager &CM = getStateManager().getConstraintManager();
+
+      if (const llvm::APSInt *Int = CM.getSymVal(this, sym)) {
         // FIXME: Because we don't correctly model (yet) sign-extension
         // and truncation of symbolic values, we need to convert
-        // the integer value to the correct signedness and bitwidth.
+        // the integer value to the correct signedness and
         //
         // This shows up in the following:
         //
@@ -279,12 +279,13 @@ SVal ProgramState::getSVal(Loc location, QualType T) const {
         //  The symbolic value stored to 'x' is actually the conjured
         //  symbol for the call to foo(); the type of that symbol is 'char',
         //  not unsigned.
-        const llvm::APSInt &NewV = getBasicVals().Convert(T, *Int);
+        if (!CM.canReasonAboutSymbolicExtTrunc())
+          Int = &getBasicVals().Convert(T, *Int);
 
         if (V.getAs<Loc>())
-          return loc::ConcreteInt(NewV);
+          return loc::ConcreteInt(*Int);
         else
-          return nonloc::ConcreteInt(NewV);
+          return nonloc::ConcreteInt(*Int);
       }
     }
   }

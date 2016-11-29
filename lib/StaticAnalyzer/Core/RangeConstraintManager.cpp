@@ -293,6 +293,8 @@ public:
 
   bool canReasonAbout(SVal X) const override;
 
+  bool canReasonAboutSymbolicExtTrunc() const override;
+
   ConditionTruthVal checkNull(ProgramStateRef State, SymbolRef Sym) override;
 
   const llvm::APSInt *getSymVal(ProgramStateRef State,
@@ -423,6 +425,10 @@ bool RangeConstraintManager::canReasonAbout(SVal X) const {
   } while (SE);
 
   return true;
+}
+
+bool RangeConstraintManager::canReasonAboutSymbolicExtTrunc() const {
+  return false;
 }
 
 ConditionTruthVal RangeConstraintManager::checkNull(ProgramStateRef State,

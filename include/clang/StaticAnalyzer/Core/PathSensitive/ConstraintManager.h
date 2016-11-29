@@ -159,6 +159,11 @@ public:
     return checkNull(State, Sym);
   }
 
+  /// canReasonAboutSymbolicExtTrunc - Not all ConstraintManagers can reason
+  ///  symbolic extension and truncation. Used this to ask directly when
+  ///  building SVals.
+  virtual bool canReasonAboutSymbolicExtTrunc() const = 0;
+
 protected:
   /// A flag to indicate that clients should be notified of assumptions.
   /// By default this is the case, but sometimes this needs to be restricted

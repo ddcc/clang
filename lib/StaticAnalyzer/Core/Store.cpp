@@ -447,9 +447,6 @@ SVal StoreManager::getLValueElement(QualType elementType, NonLoc Offset,
   // Pointer of any type can be cast and used as array base.
   const ElementRegion *ElemR = dyn_cast<ElementRegion>(BaseRegion);
 
-  // Convert the offset to the appropriate size and signedness.
-  Offset = svalBuilder.convertToArrayIndex(Offset).castAs<NonLoc>();
-
   if (!ElemR) {
     //
     // If the base region is not an ElementRegion, create one.
@@ -460,6 +457,9 @@ SVal StoreManager::getLValueElement(QualType elementType, NonLoc Offset,
     //
     //  Observe that 'p' binds to an AllocaRegion.
     //
+
+    // Convert the offset to the appropriate size and signedness.
+    Offset = svalBuilder.convertToArrayIndex(Offset).castAs<NonLoc>();
     return loc::MemRegionVal(MRMgr.getElementRegion(elementType, Offset,
                                                     BaseRegion, Ctx));
   }
@@ -483,7 +483,9 @@ SVal StoreManager::getLValueElement(QualType elementType, NonLoc Offset,
         elementType, Offset, cast<SubRegion>(ElemR->getSuperRegion()), Ctx));
   }
 
-  const llvm::APSInt& OffI = Offset.castAs<nonloc::ConcreteInt>().getValue();
+  // FIXME: This isn't quite correct, but avoids casting the Offset symbol
+  llvm::APSInt OffI = APSIntType(BaseIdxI).convert(
+      Offset.castAs<nonloc::ConcreteInt>().getValue());
   assert(BaseIdxI.isSigned());
 
   // Compute the new index.

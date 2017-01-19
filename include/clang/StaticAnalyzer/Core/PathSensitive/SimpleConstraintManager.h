@@ -17,6 +17,39 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/ConstraintManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramState.h"
 
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/ImmutableMap.h"
+
+namespace llvm {
+
+  template<typename T, typename U>
+  struct DenseMapInfo<ImmutableMap<T, U> > {
+    typedef ImmutableMap<T, U> Map;
+    typedef DenseMapInfo<T> FirstInfo;
+    typedef DenseMapInfo<U> SecondInfo;
+
+    static inline Map getEmptyKey() {
+      typename Map::Factory F;
+      Map M = F.getEmptyMap();
+      return F.add(M, FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey());
+    }
+    static inline Map getTombstoneKey() {
+      typename Map::Factory F;
+      Map M = F.getEmptyMap();
+      return F.add(M, FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey());
+    }
+    static unsigned getHashValue(const Map& M) {
+      FoldingSetNodeID ID;
+      M.Profile(ID);
+      return ID.ComputeHash();
+    }
+    static bool isEqual(const Map &LHS, const Map &RHS) {
+      return LHS == RHS;
+    }
+  };
+
+}
+
 namespace clang {
 
 namespace ento {
@@ -24,6 +57,11 @@ namespace ento {
 class SimpleConstraintManager : public ConstraintManager {
   SubEngine *SU;
   SValBuilder &SVB;
+
+  // Must store non-reference counting pointers to the underlying ProgramState
+  // Instead of storing GenericDataMap (ImmutableSet), store its hash value
+  typedef std::pair<unsigned, std::pair<const SVal *, char> > ConstraintKey;
+  llvm::DenseMap<ConstraintKey, const ProgramState *> ConstraintCache;
 
 public:
   SimpleConstraintManager(SubEngine *subengine, SValBuilder &SB)

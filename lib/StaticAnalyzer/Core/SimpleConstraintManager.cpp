@@ -44,7 +44,18 @@ ProgramStateRef SimpleConstraintManager::assume(ProgramStateRef State,
 
 ProgramStateRef SimpleConstraintManager::assume(ProgramStateRef State,
                                                 NonLoc Cond, bool Assumption) {
-  State = assumeAux(State, Cond, Assumption);
+  llvm::FoldingSetNodeID ID;
+  BasicValueFactory &BVF = State->getBasicVals();
+  State->getGDM().Profile(ID);
+  ConstraintKey K = std::make_pair(ID.ComputeHash(), std::make_pair(BVF.getPersistentSVal(Cond), Assumption));
+
+  if (!ConstraintCache.count(K)) {
+    State = assumeAux(State, Cond, Assumption);
+    ConstraintCache[K] = State.get();
+  }
+  else
+    State = ConstraintCache[K];
+
   if (NotifyAssumeClients && SU)
     return SU->processAssume(State, Cond, Assumption);
   return State;

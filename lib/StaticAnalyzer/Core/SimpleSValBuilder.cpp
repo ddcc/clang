@@ -12,9 +12,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/StaticAnalyzer/Core/PathSensitive/SValBuilder.h"
+#include "clang/StaticAnalyzer/Core/AnalyzerOptions.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/APSIntType.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/AnalysisManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramState.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/SValVisitor.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/SubEngine.h"
 
 using namespace clang;
 using namespace ento;
@@ -677,14 +680,18 @@ SVal SimpleSValBuilder::evalBinOpLL(ProgramStateRef state,
     // If one of the operands is a symbol and the other is a constant,
     // build an expression for use by the constraint manager.
     if (SymbolRef rSym = rhs.getAsLocSymbol()) {
-      // We can only build expressions with symbols on the left,
-      // so we need a reversible operator.
-      if (!BinaryOperator::isComparisonOp(op))
-        return UnknownVal();
-
       const llvm::APSInt &lVal = lhs.castAs<loc::ConcreteInt>().getValue();
-      op = BinaryOperator::reverseComparisonOp(op);
-      return makeNonLoc(rSym, op, lVal, resultTy);
+
+      if (BinaryOperator::isCommutativeOp(op))
+        return makeNonLoc(rSym, op, lVal, resultTy);
+
+      if (BinaryOperator::isComparisonOp(op)) {
+        BinaryOperator::Opcode NewOp = BinaryOperator::reverseComparisonOp(op);
+        return makeNonLoc(rSym, NewOp, lVal, resultTy);
+      }
+
+      // Prefer expressions with symbols on the left
+      return makeNonLoc(lVal, op, rSym, resultTy);
     }
 
     // If both operands are constants, just perform the operation.
@@ -1002,7 +1009,8 @@ const llvm::APSInt *SimpleSValBuilder::getKnownValue(ProgramStateRef state,
   if (SymbolRef Sym = V.getAsSymbol())
     return state->getConstraintManager().getSymVal(state, Sym);
 
-  // FIXME: Add support for SymExprs.
+  // FIXME: Add support for SymExprs in RangeConstraintManager.
+
   return nullptr;
 }
 
@@ -1014,22 +1022,30 @@ SVal SimpleSValBuilder::simplifySVal(ProgramStateRef State, SVal V) {
   class Simplifier : public FullSValVisitor<Simplifier, SVal> {
     ProgramStateRef State;
     SValBuilder &SVB;
+    AnalyzerOptions &Opts;
 
   public:
     Simplifier(ProgramStateRef State)
-        : State(State), SVB(State->getStateManager().getSValBuilder()) {}
+        : State(State), SVB(State->getStateManager().getSValBuilder()),
+          Opts(State->getStateManager()
+                   .getOwningEngine()
+                   ->getAnalysisManager()
+                   .options) {}
 
     SVal VisitSymbolData(const SymbolData *S) {
       if (const llvm::APSInt *I =
               SVB.getKnownValue(State, nonloc::SymbolVal(S)))
         return Loc::isLocType(S->getType()) ? (SVal)SVB.makeIntLocVal(*I)
                                             : (SVal)SVB.makeIntVal(*I);
-      return Loc::isLocType(S->getType()) ? (SVal)SVB.makeLoc(S) 
+      return Loc::isLocType(S->getType()) ? (SVal)SVB.makeLoc(S)
                                           : nonloc::SymbolVal(S);
     }
 
-    // TODO: Support SymbolCast. Support IntSymExpr when/if we actually
-    // start producing them.
+    SVal VisitIntSymExpr(const IntSymExpr *S) {
+      SVal RHS = Visit(S->getRHS());
+      SVal LHS = SVB.makeIntVal(S->getLHS());
+      return SVB.evalBinOp(State, S->getOpcode(), LHS, RHS, S->getType());
+    }
 
     SVal VisitSymIntExpr(const SymIntExpr *S) {
       SVal LHS = Visit(S->getLHS());
@@ -1054,6 +1070,11 @@ SVal SimpleSValBuilder::simplifySVal(ProgramStateRef State, SVal V) {
       return SVB.evalBinOp(State, S->getOpcode(), LHS, RHS, S->getType());
     }
 
+    SVal VisitSymbolCast(const SymbolCast *S) {
+      SVal V = Visit(S->getOperand());
+      return SVB.evalCast(V, S->getType(), S->getOperand()->getType());
+    }
+
     SVal VisitSymSymExpr(const SymSymExpr *S) {
       SVal LHS = Visit(S->getLHS());
       SVal RHS = Visit(S->getRHS());
@@ -1067,7 +1088,11 @@ SVal SimpleSValBuilder::simplifySVal(ProgramStateRef State, SVal V) {
     SVal VisitNonLocSymbolVal(nonloc::SymbolVal V) {
       // Simplification is much more costly than computing complexity.
       // For high complexity, it may be not worth it.
-      if (V.getSymbol()->computeComplexity() > 100)
+      // Use a lower bound to avoid recursive blowup, e.g. on PR24184.cpp
+
+      // FIXME: Complexity monotonically decreases in child recursive calls,
+      // avoid calling this repeatedly
+      if (V.getSymbol()->computeComplexity() > Opts.getMaxSimplifyComplexity())
         return V;
       return Visit(V.getSymbol());
     }

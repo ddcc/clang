@@ -85,7 +85,7 @@ public:
       // does not. Is there a good equivalent there?
       assert(assume(State, Cond, false) && "System is over constrained.");
 #endif
-      return ProgramStatePair((ProgramStateRef)nullptr, State);
+      return ProgramStatePair((ProgramStateRef) nullptr, State);
     }
 
     ProgramStateRef StFalse = assume(State, Cond, false);

@@ -370,42 +370,57 @@ ento::CreateRangeConstraintManager(ProgramStateManager &StMgr, SubEngine *Eng) {
 
 bool RangeConstraintManager::canReasonAbout(SVal X) const {
   Optional<nonloc::SymbolVal> SymVal = X.getAs<nonloc::SymbolVal>();
-  if (SymVal && SymVal->isExpression()) {
-    const SymExpr *SE = SymVal->getSymbol();
+  if (!SymVal)
+    return true;
 
-    if (const SymIntExpr *SIE = dyn_cast<SymIntExpr>(SE)) {
-      switch (SIE->getOpcode()) {
-      // We don't reason yet about bitwise-constraints on symbolic values.
-      case BO_And:
-      case BO_Or:
-      case BO_Xor:
-        return false;
-      // We don't reason yet about these arithmetic constraints on
-      // symbolic values.
-      case BO_Mul:
-      case BO_Div:
-      case BO_Rem:
-      case BO_Shl:
-      case BO_Shr:
-        return false;
-      // All other cases.
-      default:
-        return true;
-      }
+  const SymExpr *SE = SymVal->getSymbol();
+  do {
+    if (isa<SymbolData>(SE)) {
+      return true;
     }
 
-    if (const SymSymExpr *SSE = dyn_cast<SymSymExpr>(SE)) {
-      if (BinaryOperator::isComparisonOp(SSE->getOpcode())) {
-        // We handle Loc <> Loc comparisons, but not (yet) NonLoc <> NonLoc.
-        if (Loc::isLocType(SSE->getLHS()->getType())) {
-          assert(Loc::isLocType(SSE->getRHS()->getType()));
-          return true;
+    if (const BinarySymExpr *BSE = dyn_cast<BinarySymExpr>(SE)) {
+      BinaryOperator::Opcode Op = BSE->getOpcode();
+
+      if (isa<IntSymExpr>(BSE)) {
+        return false;
+      }
+
+      if (const SymIntExpr *SIE = dyn_cast<SymIntExpr>(BSE)) {
+        if (BinaryOperator::isMultiplicativeOp(Op) ||
+            BinaryOperator::isShiftOp(Op) || BinaryOperator::isBitwiseOp(Op)) {
+          // We don't reason yet about bitwise-constraints on symbolic values.
+          // We don't reason yet about arithmetic constraints on symbolic values
+          return false;
         }
+
+        // The simplification case of RangedConstraintManager::assumeSymRel()
+        if (isa<BinarySymExpr>(SIE->getLHS()) &&
+            BinaryOperator::isEqualityOp(Op) && SIE->getRHS() == 0 &&
+            BinaryOperator::isComparisonOp(
+                cast<BinarySymExpr>(SIE->getLHS())->getOpcode())) {
+          SE = SIE->getLHS();
+          continue;
+        }
+
+        return true;
+      }
+
+      if (const SymSymExpr *SSE = dyn_cast<SymSymExpr>(BSE)) {
+        if (!BinaryOperator::isComparisonOp(Op) ||
+            !Loc::isLocType(SSE->getLHS()->getType()) ||
+            !Loc::isLocType(SSE->getRHS()->getType())) {
+          // We handle Loc <> Loc comparisons, but not (yet) NonLoc <> NonLoc.
+          return false;
+        }
+
+        return canReasonAbout(nonloc::SymbolVal(SSE->getLHS())) &&
+               canReasonAbout(nonloc::SymbolVal(SSE->getRHS()));
       }
     }
 
     return false;
-  }
+  } while (SE);
 
   return true;
 }

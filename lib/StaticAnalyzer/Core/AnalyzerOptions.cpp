@@ -324,6 +324,18 @@ unsigned AnalyzerOptions::getGraphTrimInterval() {
   return GraphTrimInterval.getValue();
 }
 
+unsigned AnalyzerOptions::getMaxSimplifyComplexity() {
+  if (!MaxSimplifyComplexity.hasValue())
+    MaxSimplifyComplexity = getOptionAsInteger("max-simplify-complexity", 10);
+  return MaxSimplifyComplexity.getValue();
+}
+
+unsigned AnalyzerOptions::getMaxTaintComplexity() {
+  if (!MaxTaintComplexity.hasValue())
+    MaxTaintComplexity = getOptionAsInteger("max-taint-complexity", 10000);
+  return MaxTaintComplexity.getValue();
+}
+
 unsigned AnalyzerOptions::getMaxTimesInlineLarge() {
   if (!MaxTimesInlineLarge.hasValue())
     MaxTimesInlineLarge = getOptionAsInteger("max-times-inline-large", 32);

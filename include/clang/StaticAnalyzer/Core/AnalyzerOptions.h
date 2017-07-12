@@ -263,6 +263,12 @@ private:
   /// \sa getGraphTrimInterval
   Optional<unsigned> GraphTrimInterval;
 
+  /// \sa getMaxSimplifyComplexity
+  Optional<unsigned> MaxSimplifyComplexity;
+
+  /// \sa getMaxTaintComplexity
+  Optional<unsigned> MaxTaintComplexity;
+
   /// \sa getMaxTimesInlineLarge
   Optional<unsigned> MaxTimesInlineLarge;
 
@@ -545,6 +551,18 @@ public:
   /// This is controlled by the 'graph-trim-interval' config option. To disable
   /// node reclamation, set the option to "0".
   unsigned getGraphTrimInterval();
+
+  /// Returns the maximum complexity of symbolic constraint to generate
+  /// when taint analysis checkers are enabled (10000 by default).
+  ///
+  /// This is controlled by "-analyzer-config max-simplify-complexity" option.
+  unsigned getMaxSimplifyComplexity();
+
+  /// Returns the maximum complexity of symbolic constraints to simplify
+  /// through recursive evaluation (10 by default).
+  ///
+  /// This is controlled by "-analyzer-config max-taint-complexity" option.
+  unsigned getMaxTaintComplexity();
 
   /// Returns the maximum times a large function could be inlined.
   ///

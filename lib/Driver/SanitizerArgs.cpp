@@ -58,7 +58,6 @@ static const SanitizerMask AlwaysRecoverable =
     SanitizerKind::KernelAddress | SanitizerKind::KernelHWAddress;
 static const SanitizerMask LegacyFsanitizeRecoverMask =
     SanitizerKind::Undefined | SanitizerKind::Integer;
-static const SanitizerMask NeedsLTO = SanitizerKind::CFI;
 static const SanitizerMask TrappingSupported =
     (SanitizerKind::Undefined & ~SanitizerKind::Vptr) |
     SanitizerKind::UnsignedIntegerOverflow | SanitizerKind::ImplicitConversion |
@@ -232,10 +231,6 @@ bool SanitizerArgs::requiresPIE() const {
 
 bool SanitizerArgs::needsUnwindTables() const {
   return static_cast<bool>(Sanitizers.Mask & NeedsUnwindTables);
-}
-
-bool SanitizerArgs::needsLTO() const {
-  return static_cast<bool>(Sanitizers.Mask & NeedsLTO);
 }
 
 SanitizerArgs::SanitizerArgs(const ToolChain &TC,
@@ -446,12 +441,6 @@ SanitizerArgs::SanitizerArgs(const ToolChain &TC,
   // is disabled.
   if ((Kinds & SanitizerKind::Vptr) && (RTTIMode == ToolChain::RM_Disabled)) {
     Kinds &= ~SanitizerKind::Vptr;
-  }
-
-  // Check that LTO is enabled if we need it.
-  if ((Kinds & NeedsLTO) && !D.isUsingLTO()) {
-    D.Diag(diag::err_drv_argument_only_allowed_with)
-        << lastArgumentForMask(D, Args, Kinds & NeedsLTO) << "-flto";
   }
 
   if ((Kinds & SanitizerKind::ShadowCallStack) &&
